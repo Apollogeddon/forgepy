@@ -45,3 +45,13 @@ forgepy = { workspace = true }
 
 [tool.uv.workspace]
 members = ["."]
+
+[tool.poe.tasks]
+lint = { shell = "ruff check --fix . && ruff format ." }
+format = "ruff format ."
+type = "basedpyright"
+test = "pytest"
+test-fast = { shell = "pytest -m 'not slow'" }
+security = "osv-scanner scan -r ."
+hooks = "pre-commit install"
+build = "uv build"

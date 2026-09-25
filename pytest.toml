@@ -1,0 +1,14 @@
+[pytest]
+testpaths = ["tests"]
+markers = [
+    "slow: exercises real `uv sync` + tool invocations against a scaffolded project",
+]
+addopts = [
+    "--cov=src",
+    "--cov-branch",
+    "--cov-report=term",
+    "--cov-report=html",
+    "--cov-report=json",
+    "--junitxml=junit-report.xml",
+]
+forgepy_pass_with_no_tests = true
