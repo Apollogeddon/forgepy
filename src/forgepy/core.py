@@ -11,9 +11,7 @@ def init(cfg: InitConfig, fs: FileSystem | None = None) -> int:
     fs = fs or LocalFileSystem()
     cwd = cfg.target
 
-    console.info(
-        f"forgepy init — mode={cfg.mode.value}" + (" (dry run)" if cfg.dry_run else "")
-    )
+    console.info(f"forgepy init — mode={cfg.mode.value}" + (" (dry run)" if cfg.dry_run else ""))
     if cfg.dry_run:
         console.warn("DRY RUN MODE — no files will be written")
 

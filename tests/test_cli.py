@@ -41,9 +41,7 @@ def test_unknown_flag_is_rejected(tmp_path: Path):
     assert result.returncode != 0
 
 
-@pytest.mark.parametrize(
-    "mode_a,mode_b", [("--backend", "--library"), ("--library", "--website")]
-)
+@pytest.mark.parametrize("mode_a,mode_b", [("--backend", "--library"), ("--library", "--website")])
 def test_mode_conflict_rejected(tmp_path: Path, mode_a: str, mode_b: str):
     result = run_cli("init", mode_a, mode_b, "--dry-run", cwd=tmp_path)
     assert result.returncode != 0

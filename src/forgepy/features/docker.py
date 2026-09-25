@@ -17,9 +17,7 @@ class DockerFeature(Feature):
     def apply(self, ctx: FeatureContext) -> bool:
         package_name = pj.package_module_name(ctx.pyproject, ctx.cwd)
         template = (
-            docker_templates.DOCKERFILE_WEBSITE
-            if ctx.cfg.mode.is_website
-            else docker_templates.DOCKERFILE_BACKEND
+            docker_templates.DOCKERFILE_WEBSITE if ctx.cfg.mode.is_website else docker_templates.DOCKERFILE_BACKEND
         )
         dockerfile = docker_templates.render(
             template,

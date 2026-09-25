@@ -1,5 +1,4 @@
 {
-  "//": "Managed by forgepy. Do not edit directly - changes are overwritten by `forgepy sync`.",
   "typeCheckingMode": "strict",
   "reportUnusedImport": "error",
   "reportUnusedVariable": "error",

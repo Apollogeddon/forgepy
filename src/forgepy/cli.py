@@ -10,42 +10,22 @@ from forgepy.core import init
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="forgepy", description="Quality control CLI for Python projects"
-    )
-    parser.add_argument(
-        "-V", "--version", action="version", version=f"forgepy {__version__}"
-    )
+    parser = argparse.ArgumentParser(prog="forgepy", description="Quality control CLI for Python projects")
+    parser.add_argument("-V", "--version", action="version", version=f"forgepy {__version__}")
 
     subparsers = parser.add_subparsers(dest="command")
-    init_parser = subparsers.add_parser(
-        "init", help="Initialize a Python project with forgepy conventions"
-    )
+    init_parser = subparsers.add_parser("init", help="Initialize a Python project with forgepy conventions")
 
     mode_group = init_parser.add_mutually_exclusive_group()
-    mode_group.add_argument(
-        "--backend", action="store_const", dest="mode", const=Mode.BACKEND
-    )
-    mode_group.add_argument(
-        "--library", action="store_const", dest="mode", const=Mode.LIBRARY
-    )
-    mode_group.add_argument(
-        "--website", action="store_const", dest="mode", const=Mode.WEBSITE
-    )
+    mode_group.add_argument("--backend", action="store_const", dest="mode", const=Mode.BACKEND)
+    mode_group.add_argument("--library", action="store_const", dest="mode", const=Mode.LIBRARY)
+    mode_group.add_argument("--website", action="store_const", dest="mode", const=Mode.WEBSITE)
     init_parser.set_defaults(mode=None)
 
-    init_parser.add_argument(
-        "--all", action=argparse.BooleanOptionalAction, default=None
-    )
-    init_parser.add_argument(
-        "--testing", action=argparse.BooleanOptionalAction, default=None
-    )
-    init_parser.add_argument(
-        "--linting", action=argparse.BooleanOptionalAction, default=None
-    )
-    init_parser.add_argument(
-        "--versioning", action=argparse.BooleanOptionalAction, default=None
-    )
+    init_parser.add_argument("--all", action=argparse.BooleanOptionalAction, default=None)
+    init_parser.add_argument("--testing", action=argparse.BooleanOptionalAction, default=None)
+    init_parser.add_argument("--linting", action=argparse.BooleanOptionalAction, default=None)
+    init_parser.add_argument("--versioning", action=argparse.BooleanOptionalAction, default=None)
 
     init_parser.add_argument("--docker", action="store_true")
     init_parser.add_argument("--debian", action="store_true")

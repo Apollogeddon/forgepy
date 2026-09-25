@@ -47,9 +47,7 @@ class LintingFeature(Feature):
 
     def apply(self, ctx: FeatureContext) -> bool:
         ok = True
-        ok &= write_managed(
-            ctx, ".forgepy/ruff.toml", templates.load_config("ruff.toml")
-        )
+        ok &= write_managed(ctx, ".forgepy/ruff.toml", templates.load_config("ruff.toml"))
         ok &= create_file(
             ctx,
             "ruff.toml",
@@ -83,9 +81,7 @@ class LintingFeature(Feature):
             force=ctx.cfg.force,
         )
         pj.set_task(ctx.pyproject, "format", "ruff format .", force=ctx.cfg.force)
-        pj.set_task(
-            ctx.pyproject, "security", "osv-scanner scan -r .", force=ctx.cfg.force
-        )
+        pj.set_task(ctx.pyproject, "security", "osv-scanner scan -r .", force=ctx.cfg.force)
         pj.set_task(ctx.pyproject, "hooks", "pre-commit install", force=ctx.cfg.force)
         pj.ensure_dev_dependency(ctx.pyproject, "forgepy[toolchain]")
 
