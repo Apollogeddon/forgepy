@@ -61,9 +61,7 @@ systemctl enable __FORGEPY_DEB_NAME__.service
 """
 
 
-def render(
-    template: str, *, deb_name: str, module_name: str, maintainer: str = "unspecified"
-) -> str:
+def render(template: str, *, deb_name: str, module_name: str, maintainer: str = "unspecified") -> str:
     return (
         template.replace("__FORGEPY_DEB_NAME__", deb_name)
         .replace("__FORGEPY_MODULE_NAME__", module_name)
