@@ -20,6 +20,8 @@ toolchain = [
     "poethepoet>=0.38",
     "pre-commit>=4.3",
     "commitizen>=4.9",
+    "watchdog>=6.0",
+    "validate-pyproject>=0.24",
 ]
 
 [project.scripts]
