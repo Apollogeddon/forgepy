@@ -12,6 +12,8 @@ from __future__ import annotations
 # `python -m <module>`.
 
 NFPM_YAML = """\
+# Requires the nfpm CLI on PATH (https://nfpm.goreleaser.com) - it's a standalone
+# Go binary, not a Python package, so it isn't pulled in via pip/uv.
 name: "__FORGEPY_DEB_NAME__"
 arch: "amd64"
 platform: "linux"
