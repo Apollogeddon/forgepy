@@ -90,3 +90,36 @@ def test_no_all_with_explicit_testing_reenables_it(tmp_path: Path):
     assert result.returncode == 0
     assert (tmp_path / "pytest.toml").exists()
     assert not (tmp_path / "ruff.toml").exists()
+
+
+def test_sync_creates_managed_configs(tmp_path: Path):
+    result = run_cli("sync", cwd=tmp_path)
+    assert result.returncode == 0
+    assert (tmp_path / ".forgepy/ruff.toml").exists()
+    assert (tmp_path / ".forgepy/pyrightconfig.json").exists()
+
+
+def test_sync_check_fails_when_missing(tmp_path: Path):
+    result = run_cli("sync", "--check", cwd=tmp_path)
+    assert result.returncode == 1
+    assert not (tmp_path / ".forgepy/ruff.toml").exists()
+
+
+def test_sync_check_passes_after_sync(tmp_path: Path):
+    run_cli("sync", cwd=tmp_path)
+    result = run_cli("sync", "--check", cwd=tmp_path)
+    assert result.returncode == 0
+
+
+def test_sync_check_fails_after_tampering(tmp_path: Path):
+    run_cli("sync", cwd=tmp_path)
+    (tmp_path / ".forgepy/ruff.toml").write_text("tampered", encoding="utf-8")
+    result = run_cli("sync", "--check", cwd=tmp_path)
+    assert result.returncode == 1
+
+
+def test_init_then_sync_check_passes(tmp_path: Path):
+    """The .forgepy/ snapshot init writes should already match what sync expects."""
+    run_cli("init", cwd=tmp_path)
+    result = run_cli("sync", "--check", cwd=tmp_path)
+    assert result.returncode == 0
