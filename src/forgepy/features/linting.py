@@ -35,6 +35,11 @@ repos:
         types: [python]
         pass_filenames: false
         stages: [pre-push]
+      - id: forgepy-sync-check
+        name: forgepy sync --check
+        entry: uv run forgepy sync --check
+        language: system
+        pass_filenames: false
 {commitizen_hook}"""
 
 COMMITIZEN_HOOK = """\
@@ -90,6 +95,7 @@ class LintingFeature(Feature):
         pj.set_task(ctx.pyproject, "format", "ruff format .", force=ctx.cfg.force)
         pj.set_task(ctx.pyproject, "security", "osv-scanner scan -r .", force=ctx.cfg.force)
         pj.set_task(ctx.pyproject, "hooks", "pre-commit install", force=ctx.cfg.force)
+        pj.set_task(ctx.pyproject, "sync-check", "forgepy sync --check", force=ctx.cfg.force)
         pj.ensure_dev_dependency(ctx.pyproject, "forgepy[toolchain]")
 
         return ok
