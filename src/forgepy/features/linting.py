@@ -86,7 +86,7 @@ class LintingFeature(Feature):
             PRECOMMIT_CONFIG.format(commitizen_hook=commitizen_hook),
         )
 
-        pj.set_task(
+        pj.set_shell_task(
             ctx.pyproject,
             "lint",
             "ruff check --fix . && ruff format .",

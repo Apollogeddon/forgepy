@@ -29,7 +29,7 @@ class DebianFeature(Feature):
         ok &= create_file(ctx, f"packaging/{deb_name}.service", render(debian_templates.SYSTEMD_UNIT))
         ok &= create_file(ctx, "packaging/postinstall.sh", render(debian_templates.POSTINSTALL_SH))
 
-        pj.set_task(
+        pj.set_shell_task(
             ctx.pyproject,
             "build-deb",
             "uv sync --locked --no-dev && nfpm pkg --packager deb -f nfpm.yaml",
