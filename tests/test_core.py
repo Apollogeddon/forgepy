@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import tomlkit
+
 from forgepy.config import InitConfig, Mode
 from forgepy.core import init
 from forgepy.utils.filesystem import MemoryFileSystem
@@ -34,8 +36,6 @@ def test_init_library_has_no_private_classifier():
     cfg = InitConfig(target=PROJECT, mode=Mode.LIBRARY)
     init(cfg, fs)
 
-    import tomlkit
-
     doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
     assert "classifiers" not in doc["project"]
 
@@ -44,8 +44,6 @@ def test_init_backend_has_private_classifier():
     fs = MemoryFileSystem()
     cfg = InitConfig(target=PROJECT, mode=Mode.BACKEND)
     init(cfg, fs)
-
-    import tomlkit
 
     doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
     assert "Private :: Do Not Upload" in list(doc["project"]["classifiers"])

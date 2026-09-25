@@ -9,9 +9,7 @@ from forgepy.templates import debian as debian_templates
 
 
 def _deb_name(ctx: FeatureContext) -> str:
-    project = ctx.pyproject.get("project", {})
-    name = project.get("name") if isinstance(project, dict) else None
-    return pj.normalize_project_name(str(name) if name else ctx.cwd.name)
+    return pj.normalize_project_name(pj.project_name(ctx.pyproject, ctx.cwd))
 
 
 class DebianFeature(Feature):
@@ -25,17 +23,11 @@ class DebianFeature(Feature):
         module_name = pj.package_module_name(ctx.pyproject, ctx.cwd)
 
         def render(template: str) -> str:
-            return debian_templates.render(
-                template, deb_name=deb_name, module_name=module_name
-            )
+            return debian_templates.render(template, deb_name=deb_name, module_name=module_name)
 
         ok = create_file(ctx, "nfpm.yaml", render(debian_templates.NFPM_YAML))
-        ok &= create_file(
-            ctx, f"packaging/{deb_name}.service", render(debian_templates.SYSTEMD_UNIT)
-        )
-        ok &= create_file(
-            ctx, "packaging/postinstall.sh", render(debian_templates.POSTINSTALL_SH)
-        )
+        ok &= create_file(ctx, f"packaging/{deb_name}.service", render(debian_templates.SYSTEMD_UNIT))
+        ok &= create_file(ctx, "packaging/postinstall.sh", render(debian_templates.POSTINSTALL_SH))
 
         pj.set_task(
             ctx.pyproject,

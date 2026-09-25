@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import yaml
 
+from forgepy.templates import workflows as workflow_templates
+
 WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
+# PyYAML can produce non-str keys (YAML 1.1 parses a bare `on:` mapping key as
+# the bool True), so keys are Any here rather than str.
+YamlDoc = dict[Any, Any]
 
 
 def _workflow_files() -> list[Path]:
@@ -20,10 +26,14 @@ def test_workflow_yaml_parses(path: Path):
     assert "jobs" in doc
 
 
-def _local_workflow_refs(doc: dict) -> list[str]:
-    refs = []
-    for job in doc.get("jobs", {}).values():
-        uses = job.get("uses") if isinstance(job, dict) else None
+def _local_workflow_refs(doc: YamlDoc) -> list[str]:
+    refs: list[str] = []
+    jobs: YamlDoc = doc.get("jobs") or {}
+    for raw_job in jobs.values():
+        if not isinstance(raw_job, dict):
+            continue
+        job = cast(YamlDoc, raw_job)
+        uses = job.get("uses")
         if isinstance(uses, str) and uses.startswith("./.github/workflows/"):
             refs.append(uses.removeprefix("./"))
     return refs
@@ -36,45 +46,38 @@ def test_local_workflow_references_exist(path: Path):
 
     repo_root = WORKFLOWS_DIR.parent.parent
     for ref in _local_workflow_refs(doc):
-        assert (repo_root / ref).exists(), (
-            f"{path.name} references missing workflow {ref}"
-        )
+        assert (repo_root / ref).exists(), f"{path.name} references missing workflow {ref}"
 
 
-def _declared_inputs(doc: dict) -> set[str]:
-    on_block = doc.get(True, doc.get("on", {}))
-    workflow_call = (
-        on_block.get("workflow_call", {}) if isinstance(on_block, dict) else {}
-    )
-    return set((workflow_call or {}).get("inputs", {}).keys())
+def _declared_inputs(doc: YamlDoc) -> set[str]:
+    on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
+    workflow_call: YamlDoc = on_block.get("workflow_call") or {}
+    inputs: YamlDoc = workflow_call.get("inputs") or {}
+    return set(inputs.keys())
 
 
 @pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
 def test_with_inputs_are_declared_by_callee(path: Path):
     with path.open(encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
+        doc: YamlDoc = yaml.safe_load(f)
 
     repo_root = WORKFLOWS_DIR.parent.parent
-    for job in doc.get("jobs", {}).values():
-        if not isinstance(job, dict):
+    jobs: YamlDoc = doc.get("jobs") or {}
+    for raw_job in jobs.values():
+        if not isinstance(raw_job, dict):
             continue
+        job = cast(YamlDoc, raw_job)
         uses = job.get("uses")
-        with_block = job.get("with")
-        if not (
-            isinstance(uses, str)
-            and uses.startswith("./.github/workflows/")
-            and with_block
-        ):
+        with_block: YamlDoc = job.get("with") or {}
+        if not (isinstance(uses, str) and uses.startswith("./.github/workflows/") and with_block):
             continue
 
         callee_path = repo_root / uses.removeprefix("./")
         with callee_path.open(encoding="utf-8") as f:
-            callee_doc = yaml.safe_load(f)
+            callee_doc: YamlDoc = yaml.safe_load(f)
         declared = _declared_inputs(callee_doc)
         for key in with_block:
-            assert key in declared, (
-                f"{path.name} passes undeclared input '{key}' to {uses}"
-            )
+            assert key in declared, f"{path.name} passes undeclared input '{key}' to {uses}"
 
 
 def test_generated_index_yml_references_exist():
@@ -83,8 +86,6 @@ def test_generated_index_yml_references_exist():
     We can't fetch @main here, but we can confirm the referenced filenames exist
     in this very repo (i.e. what @main will actually serve).
     """
-    from forgepy.templates import workflows as workflow_templates
-
     for template in (
         workflow_templates.LIBRARY_WORKFLOW,
         workflow_templates.SERVICE_WORKFLOW,
@@ -97,6 +98,4 @@ def test_generated_index_yml_references_exist():
             uses = job["uses"]
             assert uses.startswith("apollogeddon/forgepy/.github/workflows/")
             filename = uses.split("/")[-1].split("@")[0]
-            assert (WORKFLOWS_DIR / filename).exists(), (
-                f"generated workflow references missing {filename}"
-            )
+            assert (WORKFLOWS_DIR / filename).exists(), f"generated workflow references missing {filename}"

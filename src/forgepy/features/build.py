@@ -18,26 +18,17 @@ class BuildFeature(Feature):
         force = ctx.cfg.force
 
         if ctx.cfg.mode.is_website:
-            project = ctx.pyproject.get("project", {})
-            project_name = (
-                str(project.get("name", ctx.cwd.name))
-                if isinstance(project, dict)
-                else ctx.cwd.name
-            )
+            project_name = pj.project_name(ctx.pyproject, ctx.cwd)
 
             ok = create_file(
                 ctx,
                 "mkdocs.yml",
-                mkdocs_templates.render(
-                    mkdocs_templates.MKDOCS_YML, project_name=project_name
-                ),
+                mkdocs_templates.render(mkdocs_templates.MKDOCS_YML, project_name=project_name),
             )
             ok &= create_file(
                 ctx,
                 "docs/index.md",
-                mkdocs_templates.render(
-                    mkdocs_templates.DOCS_INDEX_MD, project_name=project_name
-                ),
+                mkdocs_templates.render(mkdocs_templates.DOCS_INDEX_MD, project_name=project_name),
             )
 
             pj.ensure_dev_dependency(ctx.pyproject, "mkdocs-material")
@@ -49,9 +40,7 @@ class BuildFeature(Feature):
             pj.set_task(ctx.pyproject, "build", "uv build", force=force)
             pj.set_task(ctx.pyproject, "type", "basedpyright", force=force)
             if ctx.cfg.mode.is_backend:
-                pj.set_task(
-                    ctx.pyproject, "start", f"python -m {package_name}", force=force
-                )
+                pj.set_task(ctx.pyproject, "start", f"python -m {package_name}", force=force)
                 pj.set_task(
                     ctx.pyproject,
                     "watch",

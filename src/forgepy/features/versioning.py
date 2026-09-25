@@ -15,7 +15,7 @@ class VersioningFeature(Feature):
         return cfg.versioning
 
     def apply(self, ctx: FeatureContext) -> bool:
-        project_name = ctx.pyproject.get("project", {}).get("name", ctx.cwd.name)
+        project_name = pj.project_name(ctx.pyproject, ctx.cwd)
 
         manifest = {".": "0.1.0"}
         config = {
@@ -33,12 +33,8 @@ class VersioningFeature(Feature):
             }
         }
 
-        ok = create_file(
-            ctx, ".release-please-manifest.json", json.dumps(manifest, indent=2) + "\n"
-        )
-        ok &= create_file(
-            ctx, "release-please-config.json", json.dumps(config, indent=2) + "\n"
-        )
+        ok = create_file(ctx, ".release-please-manifest.json", json.dumps(manifest, indent=2) + "\n")
+        ok &= create_file(ctx, "release-please-config.json", json.dumps(config, indent=2) + "\n")
 
         pj.set_table_if_absent(
             ctx.pyproject,

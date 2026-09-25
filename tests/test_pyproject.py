@@ -87,16 +87,12 @@ def test_set_table_if_absent_creates_nested_table():
 
 def test_set_table_if_absent_respects_existing_without_force():
     doc = tomlkit.document()
-    pj.set_table_if_absent(
-        doc, ("build-system",), {"build-backend": "custom"}, force=False
-    )
-    pj.set_table_if_absent(
-        doc, ("build-system",), {"build-backend": "uv_build"}, force=False
-    )
+    pj.set_table_if_absent(doc, ("build-system",), {"build-backend": "custom"}, force=False)
+    pj.set_table_if_absent(doc, ("build-system",), {"build-backend": "uv_build"}, force=False)
     assert doc["build-system"]["build-backend"] == "custom"
 
 
-def test_save_round_trips(tmp_path=None):
+def test_save_round_trips():
     fs = MemoryFileSystem()
     doc = pj.load_or_create(fs, Path("proj"))
     pj.save(fs, Path("proj"), doc)

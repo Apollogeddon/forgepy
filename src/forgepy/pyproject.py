@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import MutableMapping
 from pathlib import Path
+from typing import Any, cast
 
 import tomlkit
 from tomlkit import TOMLDocument, table
@@ -10,6 +12,12 @@ from tomlkit.exceptions import TOMLKitError
 from forgepy.utils.filesystem import FileSystem
 
 PYPROJECT_FILENAME = "pyproject.toml"
+
+# tomlkit's stubs return Unknown/Any from container lookups, so that leakage is
+# contained to this module: every public helper here returns a concretely typed
+# value, and callers elsewhere never touch a raw TOMLDocument's untyped internals.
+
+AnyMap = MutableMapping[str, Any]
 
 
 class PyprojectError(Exception):
@@ -21,18 +29,23 @@ def normalize_project_name(name: str) -> str:
     return normalized.strip("-") or "project"
 
 
+def project_name(doc: TOMLDocument, cwd: Path) -> str:
+    """The project's declared name, falling back to the directory name."""
+    project: AnyMap = cast(AnyMap, doc).get("project") or {}
+    name = project.get("name")
+    return str(name) if name else cwd.name
+
+
 def package_module_name(doc: TOMLDocument, cwd: Path) -> str:
     """The importable module name for the project (PEP 503 name with '-' -> '_')."""
-    project = doc.get("project", {})
-    name = project.get("name") if isinstance(project, dict) else None
-    return normalize_project_name(str(name) if name else cwd.name).replace("-", "_")
+    return normalize_project_name(project_name(doc, cwd)).replace("-", "_")
 
 
-def _default_document(project_name: str, python_version: str) -> TOMLDocument:
+def _default_document(project_dir_name: str, python_version: str) -> TOMLDocument:
     doc = tomlkit.document()
 
     project = table()
-    project.add("name", normalize_project_name(project_name))
+    project.add("name", normalize_project_name(project_dir_name))
     project.add("version", "0.1.0")
     project.add("requires-python", f">={python_version}")
     project.add("dependencies", tomlkit.array())
@@ -46,9 +59,7 @@ def _default_document(project_name: str, python_version: str) -> TOMLDocument:
     return doc
 
 
-def load_or_create(
-    fs: FileSystem, cwd: Path, python_version: str = "3.13"
-) -> TOMLDocument:
+def load_or_create(fs: FileSystem, cwd: Path, python_version: str = "3.13") -> TOMLDocument:
     path = cwd / PYPROJECT_FILENAME
     if not fs.exists(path):
         return _default_document(cwd.name, python_version)
@@ -64,12 +75,12 @@ def save(fs: FileSystem, cwd: Path, doc: TOMLDocument) -> None:
     fs.write_text(cwd / PYPROJECT_FILENAME, tomlkit.dumps(doc))
 
 
-def _ensure_table(doc: TOMLDocument, dotted_path: tuple[str, ...]):
-    node = doc
+def _ensure_table(doc: TOMLDocument, dotted_path: tuple[str, ...]) -> AnyMap:
+    node = cast(AnyMap, doc)
     for key in dotted_path:
-        if key not in node or not isinstance(node[key], (dict,)):
+        if key not in node or not isinstance(node[key], dict):
             node[key] = table()
-        node = node[key]
+        node = cast(AnyMap, node[key])
     return node
 
 
@@ -86,8 +97,9 @@ def ensure_classifier(doc: TOMLDocument, classifier: str) -> None:
     if classifiers is None:
         classifiers = tomlkit.array()
         project["classifiers"] = classifiers
-    if classifier not in list(classifiers):
-        classifiers.append(classifier)
+    typed = cast("list[str]", classifiers)
+    if classifier not in list(typed):
+        typed.append(classifier)
 
 
 def ensure_dev_dependency(doc: TOMLDocument, requirement: str) -> None:
@@ -96,9 +108,10 @@ def ensure_dev_dependency(doc: TOMLDocument, requirement: str) -> None:
     if dev is None:
         dev = tomlkit.array()
         dep_groups["dev"] = dev
+    typed = cast("list[str]", dev)
     package_name = re.split(r"[\[<>=!~ ]", requirement, maxsplit=1)[0]
-    if not any(str(item).split("[")[0].strip() == package_name for item in dev):
-        dev.append(requirement)
+    if not any(str(item).split("[")[0].strip() == package_name for item in typed):
+        typed.append(requirement)
 
 
 def set_table_if_absent(
@@ -108,11 +121,7 @@ def set_table_if_absent(
     *,
     force: bool,
 ) -> None:
-    node = doc
-    for key in dotted_path[:-1]:
-        if key not in node or not isinstance(node[key], (dict,)):
-            node[key] = table()
-        node = node[key]
+    node = _ensure_table(doc, dotted_path[:-1])
 
     leaf_key = dotted_path[-1]
     if leaf_key in node and not force:
