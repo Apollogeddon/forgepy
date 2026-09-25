@@ -84,11 +84,33 @@ def _ensure_table(doc: TOMLDocument, dotted_path: tuple[str, ...]) -> AnyMap:
     return node
 
 
+def set_key_if_absent(doc: TOMLDocument, dotted_path: tuple[str, ...], key: str, value: object, *, force: bool) -> None:
+    """Set a single key within a (possibly pre-existing) table without touching its other keys."""
+    node = _ensure_table(doc, dotted_path)
+    if key in node and not force:
+        return
+    node[key] = tomlkit.item(value)
+
+
 def set_task(doc: TOMLDocument, name: str, cmd: str, *, force: bool) -> None:
     tasks = _ensure_table(doc, ("tool", "poe", "tasks"))
     if name in tasks and not force:
         return
     tasks[name] = cmd
+
+
+def set_shell_task(doc: TOMLDocument, name: str, cmd: str, *, force: bool) -> None:
+    """Like set_task, but for commands using shell operators (&&, |, etc.).
+
+    poethepoet runs a plain string task directly via subprocess with no shell,
+    so shell operators are inert there; the {shell = ...} form is required.
+    """
+    tasks = _ensure_table(doc, ("tool", "poe", "tasks"))
+    if name in tasks and not force:
+        return
+    task_table = table()
+    task_table.add("shell", cmd)
+    tasks[name] = task_table
 
 
 def ensure_classifier(doc: TOMLDocument, classifier: str) -> None:
