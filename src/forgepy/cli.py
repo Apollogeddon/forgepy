@@ -7,6 +7,7 @@ from pathlib import Path
 from forgepy import __version__, console
 from forgepy.config import InitConfig, Mode
 from forgepy.core import init
+from forgepy.sync import sync
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -35,6 +36,10 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--python", dest="python_version", default="3.13")
     init_parser.add_argument("-C", "--path", dest="path", default=".")
 
+    sync_parser = subparsers.add_parser("sync", help="Refresh forgepy's managed .forgepy/ base configs")
+    sync_parser.add_argument("--check", action="store_true", help="Report drift without writing (exit 1 if found)")
+    sync_parser.add_argument("-C", "--path", dest="path", default=".")
+
     return parser
 
 
@@ -52,6 +57,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.print_help()
         return 1
+
+    if args.command == "sync":
+        return sync(Path(args.path).resolve(), check=args.check)
 
     cfg = InitConfig(
         mode=args.mode or Mode.BACKEND,
