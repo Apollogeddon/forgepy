@@ -28,6 +28,13 @@ repos:
         entry: uv run ruff format
         language: system
         types: [python]
+      - id: basedpyright
+        name: basedpyright
+        entry: uv run basedpyright
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]
 {commitizen_hook}"""
 
 COMMITIZEN_HOOK = """\
