@@ -1,0 +1,70 @@
+name: Python Debian
+
+on:
+  workflow_call:
+    inputs:
+      enable_secrets:
+        required: false
+        type: boolean
+        default: true
+      python_version:
+        required: false
+        type: string
+        default: '3.13'
+      working_directory:
+        required: false
+        type: string
+        default: '.'
+
+jobs:
+  auto-merge:
+    uses: ./.github/workflows/merge.yml
+    permissions:
+      contents: write
+      pull-requests: write
+
+  testing:
+    uses: ./.github/workflows/testing.yml
+    with:
+      working_directory: ${{ inputs.working_directory }}
+      python_version: ${{ inputs.python_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+
+  version:
+    uses: ./.github/workflows/version.yml
+    needs: [testing]
+    with:
+      working_directory: ${{ inputs.working_directory }}
+
+  build-deb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [version]
+    if: github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
+      - name: Install dependencies into the packaged venv
+        run: uv sync --locked --no-dev
+      - name: Install nfpm
+        run: |
+          curl -sL https://github.com/goreleaser/nfpm/releases/latest/download/nfpm_amd64.deb -o nfpm.deb
+          sudo dpkg -i nfpm.deb
+          rm nfpm.deb
+      - name: Build .deb package
+        run: nfpm pkg --packager deb -f nfpm.yaml
+      - name: Upload .deb Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: deb-package
+          path: ${{ inputs.working_directory }}/*.deb

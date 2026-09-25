@@ -1,0 +1,92 @@
+name: Python Tests
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        required: false
+        type: string
+        default: '.'
+      python_version:
+        required: false
+        type: string
+        default: '3.13'
+      enable_secrets:
+        required: false
+        type: boolean
+        default: true
+      run_tests:
+        required: false
+        type: boolean
+        default: true
+      artifact_name:
+        required: false
+        type: string
+        default: 'dist'
+      build_command:
+        required: false
+        type: string
+        default: 'uv build'
+
+jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+    with:
+      working_directory: ${{ inputs.working_directory }}
+      python_version: ${{ inputs.python_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+
+  testing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [quality]
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Tests
+        if: inputs.run_tests
+        run: uv run pytest
+      - name: Upload Coverage
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: |
+            ${{ inputs.working_directory }}/htmlcov
+            ${{ inputs.working_directory }}/junit-report.xml
+          if-no-files-found: ignore
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [quality, testing]
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Build
+        run: ${{ inputs.build_command }}
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.working_directory }}/dist

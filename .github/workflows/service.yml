@@ -1,0 +1,37 @@
+name: Python Service
+
+on:
+  workflow_call:
+    inputs:
+      enable_secrets:
+        required: false
+        type: boolean
+        default: true
+      python_version:
+        required: false
+        type: string
+        default: '3.13'
+      working_directory:
+        required: false
+        type: string
+        default: '.'
+
+jobs:
+  auto-merge:
+    uses: ./.github/workflows/merge.yml
+    permissions:
+      contents: write
+      pull-requests: write
+
+  testing:
+    uses: ./.github/workflows/testing.yml
+    with:
+      working_directory: ${{ inputs.working_directory }}
+      python_version: ${{ inputs.python_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+
+  version:
+    uses: ./.github/workflows/version.yml
+    needs: [testing]
+    with:
+      working_directory: ${{ inputs.working_directory }}

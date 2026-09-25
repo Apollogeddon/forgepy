@@ -1,0 +1,25 @@
+name: ForgePy CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  index:
+    uses: ./.github/workflows/library.yml
+    with:
+      python_version: '3.13'
+      working_directory: '.'
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write

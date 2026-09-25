@@ -1,0 +1,46 @@
+name: Python Website
+
+on:
+  workflow_call:
+    inputs:
+      enable_secrets:
+        required: false
+        type: boolean
+        default: true
+      python_version:
+        required: false
+        type: string
+        default: '3.13'
+      working_directory:
+        required: false
+        type: string
+        default: '.'
+      artifact_name:
+        required: false
+        type: string
+        default: 'dist'
+
+# Deploy-to-Pages is intentionally not wired up here yet (tracked separately) -
+# this workflow builds and versions the site but does not publish it anywhere.
+
+jobs:
+  auto-merge:
+    uses: ./.github/workflows/merge.yml
+    permissions:
+      contents: write
+      pull-requests: write
+
+  testing:
+    uses: ./.github/workflows/testing.yml
+    with:
+      working_directory: ${{ inputs.working_directory }}
+      python_version: ${{ inputs.python_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+      artifact_name: ${{ inputs.artifact_name }}
+      build_command: 'uv run mkdocs build -d dist'
+
+  version:
+    uses: ./.github/workflows/version.yml
+    needs: [testing]
+    with:
+      working_directory: ${{ inputs.working_directory }}
