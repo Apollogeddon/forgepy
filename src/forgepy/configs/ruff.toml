@@ -10,4 +10,4 @@ indent-style = "space"
 line-ending = "lf"
 
 [lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "PL"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "PL", "N", "A", "C4", "PTH", "PERF", "RET", "ARG", "S"]

@@ -13,7 +13,7 @@ PRIVATE_CLASSIFIER = "Private :: Do Not Upload"
 class BaseFeature(Feature):
     name: ClassVar[str] = "base"
 
-    def should_run(self, cfg: InitConfig) -> bool:
+    def should_run(self, cfg: InitConfig) -> bool:  # noqa: ARG002 - Feature interface
         return True
 
     def apply(self, ctx: FeatureContext) -> bool:

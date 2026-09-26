@@ -29,7 +29,7 @@ class Feature(ABC):
     @abstractmethod
     def apply(self, ctx: FeatureContext) -> bool: ...
 
-    def cleanup(self, ctx: FeatureContext) -> None:
+    def cleanup(self, ctx: FeatureContext) -> None:  # noqa: ARG002 - default no-op override point
         return None
 
 

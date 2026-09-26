@@ -46,13 +46,13 @@ class MemoryFileSystem:
         return path.as_posix()
 
     def cwd(self) -> Path:
-        return Path(".")
+        return Path()
 
     def exists(self, path: Path) -> bool:
         key = self._key(path)
         return key in self._files or key in self._dirs
 
-    def mkdir(self, path: Path, *, parents: bool = True) -> None:
+    def mkdir(self, path: Path, *, parents: bool = True) -> None:  # noqa: ARG002 - part of the FileSystem protocol
         self._dirs.add(self._key(path))
 
     def read_text(self, path: Path) -> str:

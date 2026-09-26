@@ -11,7 +11,7 @@ from forgepy.templates import mkdocs as mkdocs_templates
 class BuildFeature(Feature):
     name: ClassVar[str] = "build"
 
-    def should_run(self, cfg: InitConfig) -> bool:
+    def should_run(self, cfg: InitConfig) -> bool:  # noqa: ARG002 - Feature interface
         return True
 
     def apply(self, ctx: FeatureContext) -> bool:
@@ -35,24 +35,23 @@ class BuildFeature(Feature):
             pj.set_task(ctx.pyproject, "dev", "mkdocs serve", force=force)
             pj.set_task(ctx.pyproject, "build", "mkdocs build -d dist", force=force)
             return ok
-        else:
-            package_name = pj.package_module_name(ctx.pyproject, ctx.cwd)
-            pj.set_task(ctx.pyproject, "build", "uv build", force=force)
-            pj.set_task(ctx.pyproject, "type", "basedpyright", force=force)
-            if ctx.cfg.mode.is_backend:
-                pj.set_task(ctx.pyproject, "start", f"python -m {package_name}", force=force)
-                pj.set_task(
-                    ctx.pyproject,
-                    "watch",
-                    f"watchmedo auto-restart -- python -m {package_name}",
-                    force=force,
-                )
-            if ctx.cfg.mode.is_library:
-                pj.set_task(
-                    ctx.pyproject,
-                    "check-dist",
-                    "validate-pyproject pyproject.toml",
-                    force=force,
-                )
+        package_name = pj.package_module_name(ctx.pyproject, ctx.cwd)
+        pj.set_task(ctx.pyproject, "build", "uv build", force=force)
+        pj.set_task(ctx.pyproject, "type", "basedpyright", force=force)
+        if ctx.cfg.mode.is_backend:
+            pj.set_task(ctx.pyproject, "start", f"python -m {package_name}", force=force)
+            pj.set_task(
+                ctx.pyproject,
+                "watch",
+                f"watchmedo auto-restart -- python -m {package_name}",
+                force=force,
+            )
+        if ctx.cfg.mode.is_library:
+            pj.set_task(
+                ctx.pyproject,
+                "check-dist",
+                "validate-pyproject pyproject.toml",
+                force=force,
+            )
 
         return True

@@ -10,7 +10,7 @@ from forgepy.templates import workflows as workflow_templates
 class WorkflowFeature(Feature):
     name: ClassVar[str] = "workflows"
 
-    def should_run(self, cfg: InitConfig) -> bool:
+    def should_run(self, cfg: InitConfig) -> bool:  # noqa: ARG002 - Feature interface
         return True
 
     def apply(self, ctx: FeatureContext) -> bool:
