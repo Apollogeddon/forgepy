@@ -10,6 +10,8 @@ PYTEST_TOML = """\
 [pytest]
 testpaths = ["tests"]
 addopts = [
+    "--strict-markers",
+    "--strict-config",
     "--cov=src",
     "--cov-branch",
     "--cov-report=term",

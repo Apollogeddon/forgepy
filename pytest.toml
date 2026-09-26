@@ -4,6 +4,8 @@ markers = [
     "slow: exercises real `uv sync` + tool invocations against a scaffolded project",
 ]
 addopts = [
+    "--strict-markers",
+    "--strict-config",
     "--cov=src",
     "--cov-branch",
     "--cov-report=term",
