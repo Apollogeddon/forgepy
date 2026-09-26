@@ -19,6 +19,10 @@ on:
         required: false
         type: string
         default: 'dist'
+      publish:
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   auto-merge:
@@ -45,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [version]
-    if: github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
+    if: inputs.publish && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
     permissions:
       contents: read
       id-token: write

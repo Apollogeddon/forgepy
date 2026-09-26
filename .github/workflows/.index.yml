@@ -19,7 +19,7 @@ jobs:
     with:
       python_version: '3.13'
       working_directory: '.'
+      publish: false
     permissions:
       contents: write
       pull-requests: write
-      id-token: write
