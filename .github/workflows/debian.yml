@@ -38,6 +38,11 @@ jobs:
 
   build-deb:
     runs-on: ubuntu-latest
+    # Build inside an actual Debian container so the venv is built against the same
+    # apt-provided /usr/bin/python3 that `depends: python3 (>= X.Y)` guarantees on
+    # the real install target - a GitHub-hosted Python (setup-python, or uv's own
+    # managed download) lives at a path no .deb dependency can promise exists there.
+    container: debian:bookworm-slim
     timeout-minutes: 10
     needs: [version]
     if: github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
@@ -48,21 +53,25 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ inputs.python_version }}
-      - name: Install dependencies into the packaged venv
-        run: uv sync --locked --no-dev
+      - name: Install build tooling
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates python3 python3-venv
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build a venv against the system Python
+        run: |
+          uv venv --relocatable --no-managed-python .venv
+          uv sync --locked --no-dev --no-editable
       - name: Install nfpm
         run: |
           curl -sL https://github.com/goreleaser/nfpm/releases/latest/download/nfpm_amd64.deb -o nfpm.deb
-          sudo dpkg -i nfpm.deb
+          apt-get install -y ./nfpm.deb
           rm nfpm.deb
       - name: Build .deb package
-        run: nfpm pkg --packager deb -f nfpm.yaml
+        run: python3 packaging/build_deb.py
       - name: Upload .deb Artifact
         uses: actions/upload-artifact@v7
         with:
