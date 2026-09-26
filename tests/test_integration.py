@@ -1,13 +1,6 @@
-"""Real end-to-end checks: scaffold a project, install real dependencies, and run
-the real toolchain it generates. Unlike the rest of the suite (which uses
-MemoryFileSystem or only checks generated file content), this exercises the actual
-`uv sync` + tool invocations a user would run - the only tests that catch wiring
-bugs like a missing dependency, a wrong config table name, or a poe task that
-silently needs a shell it doesn't have.
+"""The only tests that run real `uv sync` + generated tools, catching wiring bugs content checks miss.
 
-Requires `uv` on PATH and points the scaffolded project's `forgepy` dependency at
-this repo's own source (forgepy isn't published yet, so PyPI resolution would
-otherwise fail) - this override is test-only plumbing, never written by `init`.
+forgepy isn't on PyPI yet, so the scaffolded project's dependency is pointed at this repo (test-only).
 """
 
 from __future__ import annotations

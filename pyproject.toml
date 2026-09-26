@@ -1,15 +1,21 @@
 [project]
 name = "forgepy"
 version = "0.1.0"
-description = "Quality control tool for maintaining best practice Python projects"
+description = "Scaffolds best-practice tooling into Python projects: linting, type-checking, testing, CI/CD, Docker, and Debian packaging"
 readme = "README.md"
 authors = [
     { name = "Apollogeddon" }
 ]
+keywords = ["scaffolding", "cli", "project-generator", "ruff", "uv", "ci-cd"]
 requires-python = ">=3.11"
 dependencies = [
     "tomlkit>=0.13",
 ]
+
+[project.urls]
+Homepage = "https://github.com/apollogeddon/forgepy"
+Repository = "https://github.com/apollogeddon/forgepy"
+Issues = "https://github.com/apollogeddon/forgepy/issues"
 
 [project.optional-dependencies]
 toolchain = [

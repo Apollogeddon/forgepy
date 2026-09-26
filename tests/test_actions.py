@@ -81,11 +81,7 @@ def test_with_inputs_are_declared_by_callee(path: Path):
 
 
 def test_generated_index_yml_references_exist():
-    """The CLI's generated index.yml points at apollogeddon/forgepy@main workflows.
-
-    We can't fetch @main here, but we can confirm the referenced filenames exist
-    in this very repo (i.e. what @main will actually serve).
-    """
+    """Generated workflows reference apollogeddon/forgepy@main; this repo is what @main serves."""
     for template in (
         workflow_templates.LIBRARY_WORKFLOW,
         workflow_templates.SERVICE_WORKFLOW,

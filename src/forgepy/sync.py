@@ -5,8 +5,6 @@ from pathlib import Path
 from forgepy import console, templates
 from forgepy.utils.filesystem import FileSystem, LocalFileSystem
 
-# Maps each managed snapshot's project-relative path to the shipped config it
-# mirrors (forgepy.configs/<name>). Extend this as forgepy ships more base configs.
 MANAGED_CONFIGS: dict[str, str] = {
     ".forgepy/ruff.toml": "ruff.toml",
     ".forgepy/pyrightconfig.json": "pyrightconfig.json",

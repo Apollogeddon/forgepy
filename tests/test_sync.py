@@ -26,7 +26,6 @@ def test_sync_refreshes_stale_managed_configs():
 def test_sync_is_noop_when_already_current():
     fs = MemoryFileSystem()
     sync(PROJECT, fs=fs)
-    # second run should not error and should leave content identical
     assert sync(PROJECT, fs=fs) == 0
     assert fs.read_text(PROJECT / ".forgepy/ruff.toml") == templates.load_config("ruff.toml")
 

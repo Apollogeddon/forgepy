@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python .claude/hooks/read_counter.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python .claude/hooks/lint_on_edit.py",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(uv run basedpyright *)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run poe type *)",
+      "Bash(uv run poe test *)",
+      "Bash(uv run poe sync-check *)"
+    ]
+  }
+}

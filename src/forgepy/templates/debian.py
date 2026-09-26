@@ -3,13 +3,9 @@ from __future__ import annotations
 # Plain (non f-string) templates — see workflows.py for why.
 # Caveat: uv-built venvs bake in the absolute path they were created at, so the
 # venv packaged here must be built at the same /opt/<name>/.venv path it will run
-# at (e.g. in a container or CI step chrooted to that prefix) - moving a normally
-# built .venv to a different path will break its shebangs.
-#
-# __FORGEPY_DEB_NAME__ is the Debian-policy-compliant name (lowercase, hyphens) used
-# for the package name, service unit and /opt directory. __FORGEPY_MODULE_NAME__ is
-# the underscored, importable Python module name used for `src/<module>` and
-# `python -m <module>`.
+# at - moving a built .venv elsewhere breaks its shebangs.
+# __FORGEPY_DEB_NAME__ is the Debian-policy name (package, unit, /opt dir);
+# __FORGEPY_MODULE_NAME__ is the underscored importable module name.
 
 NFPM_YAML = """\
 # Requires the nfpm CLI on PATH (https://nfpm.goreleaser.com) - it's a standalone

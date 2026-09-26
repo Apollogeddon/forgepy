@@ -100,11 +100,7 @@ def set_task(doc: TOMLDocument, name: str, cmd: str, *, force: bool) -> None:
 
 
 def set_shell_task(doc: TOMLDocument, name: str, cmd: str, *, force: bool) -> None:
-    """Like set_task, but for commands using shell operators (&&, |, etc.).
-
-    poethepoet runs a plain string task directly via subprocess with no shell,
-    so shell operators are inert there; the {shell = ...} form is required.
-    """
+    """poe runs plain string tasks without a shell, so &&/| need the {shell = ...} form."""
     tasks = _ensure_table(doc, ("tool", "poe", "tasks"))
     if name in tasks and not force:
         return

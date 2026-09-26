@@ -1,0 +1,29 @@
+{
+  "cSpell.words": [
+    "astral",
+    "basedpyright",
+    "commitizen",
+    "dockerignore",
+    "forgepy",
+    "gitleaks",
+    "goreleaser",
+    "mkdocs",
+    "nfpm",
+    "osv",
+    "poethepoet",
+    "pyproject",
+    "pyrightconfig",
+    "pytest",
+    "sdist",
+    "tomlkit",
+    "venv",
+    "watchmedo"
+  ],
+  "editor.codeActionsOnSave": {
+    "source.organizeImports.ruff": "explicit",
+    "source.fixAll.ruff": "explicit"
+  },
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff"
+  }
+}
