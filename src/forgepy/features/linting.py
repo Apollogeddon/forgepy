@@ -63,7 +63,10 @@ class LintingFeature(Feature):
         ok &= create_file(
             ctx,
             "ruff.toml",
-            f'extend = ".forgepy/ruff.toml"\ntarget-version = "py{ctx.cfg.python_version.replace(".", "")}"\n',
+            f'extend = ".forgepy/ruff.toml"\n'
+            f'target-version = "py{ctx.cfg.python_version.replace(".", "")}"\n\n'
+            f"[lint.per-file-ignores]\n"
+            f'"tests/**" = ["S101", "S603", "S607"]\n',
         )
         ok &= write_managed(
             ctx,
