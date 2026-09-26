@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import ClassVar
 
 from forgepy import pyproject as pj
@@ -73,14 +74,22 @@ class LintingFeature(Feature):
             ".forgepy/pyrightconfig.json",
             templates.load_config("pyrightconfig.json"),
         )
-        ok &= create_file(
-            ctx,
-            "pyrightconfig.json",
-            '{\n  "extends": ".forgepy/pyrightconfig.json",\n'
-            '  "include": ["src", "tests"],\n'
-            '  "venvPath": ".",\n'
-            '  "venv": ".venv"\n}\n',
-        )
+        # Only include paths BaseFeature/TestingFeature actually create - website mode has
+        # no src/, and --no-testing skips tests/, so basedpyright would exit nonzero on a
+        # fresh scaffold if we always claimed both existed.
+        include_paths: list[str] = []
+        if not ctx.cfg.mode.is_website:
+            include_paths.append("src")
+        if ctx.cfg.testing:
+            include_paths.append("tests")
+
+        pyrightconfig = {
+            "extends": ".forgepy/pyrightconfig.json",
+            "include": include_paths,
+            "venvPath": ".",
+            "venv": ".venv",
+        }
+        ok &= create_file(ctx, "pyrightconfig.json", json.dumps(pyrightconfig, indent=2) + "\n")
 
         commitizen_hook = COMMITIZEN_HOOK if ctx.cfg.versioning else ""
         ok &= create_file(

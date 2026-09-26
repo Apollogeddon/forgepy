@@ -34,6 +34,7 @@ class BuildFeature(Feature):
             pj.ensure_dev_dependency(ctx.pyproject, "mkdocs-material")
             pj.set_task(ctx.pyproject, "dev", "mkdocs serve", force=force)
             pj.set_task(ctx.pyproject, "build", "mkdocs build -d dist", force=force)
+            pj.set_task(ctx.pyproject, "type", "basedpyright", force=force)
             return ok
         package_name = pj.package_module_name(ctx.pyproject, ctx.cwd)
         pj.set_task(ctx.pyproject, "build", "uv build", force=force)

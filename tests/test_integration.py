@@ -95,9 +95,19 @@ def test_library_scaffold_passes_its_own_toolchain(tmp_path: Path):
 def test_website_scaffold_passes_its_own_toolchain(tmp_path: Path):
     project = _scaffold(tmp_path, "--website")
     _run(["uv", "run", "poe", "lint"], cwd=project)
+    _run(["uv", "run", "poe", "type"], cwd=project)
     _run(["uv", "run", "poe", "test"], cwd=project)
     _run(["uv", "run", "poe", "build"], cwd=project)
     _run(["uv", "run", "poe", "sync-check"], cwd=project)
+
+
+def test_backend_no_testing_scaffold_passes_its_own_toolchain(tmp_path: Path):
+    """Regression: pyrightconfig.json used to hardcode "include": ["src", "tests"],
+    crashing basedpyright when --no-testing skipped creating tests/."""
+    project = _scaffold(tmp_path, "--backend", "--no-testing")
+    _run(["uv", "run", "poe", "lint"], cwd=project)
+    _run(["uv", "run", "poe", "type"], cwd=project)
+    _run(["uv", "run", "poe", "build"], cwd=project)
 
 
 def test_backend_debian_scaffold_syncs_and_validates(tmp_path: Path):

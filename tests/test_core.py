@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import tomlkit
@@ -164,3 +165,24 @@ def test_init_debian_disabled_removes_packaging_files_with_force():
 def test_debian_rejected_outside_backend_mode():
     errors = InitConfig(mode=Mode.WEBSITE, debian=True).validate()
     assert any("debian" in e for e in errors)
+
+
+def test_pyrightconfig_include_omits_src_for_website():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, mode=Mode.WEBSITE), fs)
+    content = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
+    assert content["include"] == ["tests"]
+
+
+def test_pyrightconfig_include_omits_tests_when_testing_disabled():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, testing=False), fs)
+    content = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
+    assert content["include"] == ["src"]
+
+
+def test_pyrightconfig_include_has_both_for_default_backend():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    content = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
+    assert content["include"] == ["src", "tests"]
