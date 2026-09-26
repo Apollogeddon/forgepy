@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Quality control tool for maintaining best practice Python projects"
 readme = "README.md"
 authors = [
-    { name = "Apollogeddon", email = "dunc1221@proton.me" }
+    { name = "Apollogeddon" }
 ]
 requires-python = ">=3.11"
 dependencies = [
@@ -45,6 +45,10 @@ forgepy = { workspace = true }
 
 [tool.uv.workspace]
 members = ["."]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
 
 [tool.poe.tasks]
 lint = { shell = "ruff check --fix . && ruff format ." }
