@@ -1,6 +1,4 @@
-"""PostToolUse hook (Edit|Write): runs ruff check --fix + ruff format on the
-touched file for instant feedback, mirroring the repo's `poe lint` task.
-"""
+"""PostToolUse hook (Edit|Write): runs ruff check --fix + ruff format on the touched file."""
 
 from __future__ import annotations
 

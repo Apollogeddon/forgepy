@@ -13,9 +13,8 @@ from forgepy.utils.filesystem import FileSystem
 
 PYPROJECT_FILENAME = "pyproject.toml"
 
-# tomlkit's stubs return Unknown/Any from container lookups, so that leakage is
-# contained to this module: every public helper here returns a concretely typed
-# value, and callers elsewhere never touch a raw TOMLDocument's untyped internals.
+# tomlkit's stubs return Unknown/Any - every helper here returns a concrete type
+# so that leakage stays contained to this module.
 
 AnyMap = MutableMapping[str, Any]
 

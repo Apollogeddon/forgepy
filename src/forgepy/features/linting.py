@@ -74,9 +74,7 @@ class LintingFeature(Feature):
             ".forgepy/pyrightconfig.json",
             templates.load_config("pyrightconfig.json"),
         )
-        # Only include paths BaseFeature/TestingFeature actually create - website mode has
-        # no src/, and --no-testing skips tests/, so basedpyright would exit nonzero on a
-        # fresh scaffold if we always claimed both existed.
+        # Only include paths that actually exist - website mode skips src/, --no-testing skips tests/.
         include_paths: list[str] = []
         if not ctx.cfg.mode.is_website:
             include_paths.append("src")

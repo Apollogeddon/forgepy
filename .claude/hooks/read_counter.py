@@ -1,6 +1,4 @@
-"""PreToolUse hook (Read|Grep): counts calls per session, nudges toward
-spawning a Haiku Explore agent past the threshold set in CLAUDE.md.
-"""
+"""PreToolUse hook (Read|Grep): nudges toward a Haiku Explore agent past CLAUDE.md's threshold."""
 
 from __future__ import annotations
 

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-# Plain (non f-string) templates: GitHub Actions "${{ ... }}" syntax collides with
-# both f-string and string.Template placeholder syntax, so substitution below uses
-# plain str.replace() on explicit __FORGEPY_*__ tokens instead.
+# Plain templates: GitHub Actions "${{ ... }}" collides with f-string/Template syntax,
+# so substitution uses str.replace() on __FORGEPY_*__ tokens instead.
 
 LIBRARY_WORKFLOW = """\
 name: CI

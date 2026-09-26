@@ -1,7 +1,5 @@
-"""The only tests that run real `uv sync` + generated tools, catching wiring bugs content checks miss.
-
-forgepy isn't on PyPI yet, so the scaffolded project's dependency is pointed at this repo (test-only).
-"""
+"""Only suite that runs real `uv sync` + generated tools; points the scaffolded
+dependency at this repo since forgepy isn't on PyPI yet."""
 
 from __future__ import annotations
 

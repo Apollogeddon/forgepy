@@ -22,9 +22,7 @@ addopts = [
 forgepy_pass_with_no_tests = true
 """
 
-# A placeholder so `tests/` exists on disk right away - pyrightconfig.json's
-# "include": [..., "tests"] otherwise errors on a truly fresh scaffold, and
-# pytest warns about an empty testpaths entry.
+# Keeps tests/ non-empty - an empty dir fails pyrightconfig's include and pytest's testpaths.
 TEST_PLACEHOLDER = '''\
 def test_placeholder() -> None:
     """Delete this once real tests exist."""

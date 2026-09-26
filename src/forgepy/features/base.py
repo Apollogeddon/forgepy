@@ -29,12 +29,10 @@ class BaseFeature(Feature):
 
         ok = True
         if ctx.cfg.mode.is_website:
-            # A docs site has no importable Python module, so uv must not try to
-            # build/install this project as a package during `uv sync`.
+            # A docs site has no importable module, so uv must not try to build/install it.
             pj.set_key_if_absent(ctx.pyproject, ("tool", "uv"), "package", False, force=ctx.cfg.force)
         else:
-            # uv_build requires the module to exist at `uv sync`/`uv build` time, so a
-            # freshly-scaffolded backend/library project needs a real package right away.
+            # uv_build requires the module to exist at `uv sync`/`uv build` time.
             module_name = pj.package_module_name(ctx.pyproject, ctx.cwd)
             project_name = pj.project_name(ctx.pyproject, ctx.cwd)
             ok &= create_if_missing(

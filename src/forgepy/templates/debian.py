@@ -1,17 +1,8 @@
 from __future__ import annotations
 
 # Plain (non f-string) templates — see workflows.py for why.
-#
-# The shipped .venv must be built with `uv venv --relocatable --no-managed-python`
-# (system Python, not uv's own managed download) then `uv sync --no-editable` -
-# uv-managed Python installs live at a fixed absolute path outside the venv itself,
-# which a .deb install on an arbitrary target can't guarantee exists. Building
-# against the system python3 means `depends: python3 (>= X.Y)` actually covers it,
-# since apt installs that to a stable, well-known location.
-#
-# __FORGEPY_DEB_NAME__ is the Debian-policy name (package, unit, /opt dir);
-# __FORGEPY_MODULE_NAME__ is the underscored importable module name;
-# __FORGEPY_PYTHON_VERSION__ is the target Python version (e.g. "3.13").
+# Built with --relocatable --no-managed-python so the venv depends on system
+# python3, not uv's own download path, which a .deb install can't guarantee exists.
 
 NFPM_YAML = """\
 # Requires the nfpm CLI on PATH (https://nfpm.goreleaser.com) - it's a standalone
@@ -28,8 +19,7 @@ description: "__FORGEPY_DEB_NAME__"
 license: "MIT"
 
 contents:
-  # A --no-editable `uv sync` installs the project into .venv's own site-packages,
-  # so shipping the venv alone is enough - no separate src/ copy needed.
+  # --no-editable installs the project into .venv's site-packages - no separate src/ copy needed.
   - src: .venv
     dst: /opt/__FORGEPY_DEB_NAME__/.venv
   - src: packaging/__FORGEPY_DEB_NAME__.service
@@ -66,10 +56,7 @@ systemctl enable __FORGEPY_DEB_NAME__.service
 """
 
 BUILD_DEB_PY = '''\
-"""Builds the .deb: stamps nfpm.yaml's ${VERSION} from pyproject.toml, since nfpm
-doesn't read it itself. Run after `uv venv --relocatable --no-managed-python .venv`
-and `uv sync --locked --no-dev --no-editable` have populated .venv.
-"""
+"""Stamps nfpm.yaml's ${VERSION} from pyproject.toml, since nfpm doesn't read it itself."""
 
 import os
 import shutil
