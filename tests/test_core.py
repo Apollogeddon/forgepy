@@ -26,8 +26,8 @@ def test_init_creates_expected_files_for_backend():
         ".forgepy/pyrightconfig.json",
         ".pre-commit-config.yaml",
         "pytest.toml",
-        "release-please-config.json",
-        ".release-please-manifest.json",
+        ".github/release.json",
+        ".github/.release.json",
     ):
         assert fs.exists(PROJECT / expected), f"expected {expected} to exist"
 

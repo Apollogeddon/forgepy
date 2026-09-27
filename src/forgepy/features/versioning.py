@@ -33,8 +33,8 @@ class VersioningFeature(Feature):
             }
         }
 
-        ok = create_file(ctx, ".release-please-manifest.json", json.dumps(manifest, indent=2) + "\n")
-        ok &= create_file(ctx, "release-please-config.json", json.dumps(config, indent=2) + "\n")
+        ok = create_file(ctx, ".github/.release.json", json.dumps(manifest, indent=2) + "\n")
+        ok &= create_file(ctx, ".github/release.json", json.dumps(config, indent=2) + "\n")
 
         pj.set_table_if_absent(
             ctx.pyproject,
@@ -47,5 +47,5 @@ class VersioningFeature(Feature):
 
     def cleanup(self, ctx: FeatureContext) -> None:
         if not ctx.cfg.versioning:
-            remove_file(ctx, ".release-please-manifest.json")
-            remove_file(ctx, "release-please-config.json")
+            remove_file(ctx, ".github/.release.json")
+            remove_file(ctx, ".github/release.json")

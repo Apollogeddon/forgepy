@@ -82,7 +82,7 @@ def test_no_all_disables_standard_features(tmp_path: Path):
     assert result.returncode == 0
     assert not (tmp_path / "pytest.toml").exists()
     assert not (tmp_path / "ruff.toml").exists()
-    assert not (tmp_path / "release-please-config.json").exists()
+    assert not (tmp_path / ".github/release.json").exists()
 
 
 def test_no_all_with_explicit_testing_reenables_it(tmp_path: Path):
