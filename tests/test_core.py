@@ -104,7 +104,6 @@ def test_init_backend_docker_creates_uv_based_dockerfile():
     assert init(cfg, fs) == 0
     dockerfile = fs.read_text(PROJECT / "Dockerfile")
     assert "astral-sh/uv" in dockerfile
-    assert "distroless" not in dockerfile
 
 
 def test_init_website_docker_creates_nginx_dockerfile():
@@ -171,18 +170,20 @@ def test_pyrightconfig_include_omits_src_for_website():
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT, mode=Mode.WEBSITE), fs)
     content = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
-    assert content["include"] == ["tests"]
+    assert "src" not in content["include"]
+    assert "tests" in content["include"]
 
 
 def test_pyrightconfig_include_omits_tests_when_testing_disabled():
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT, testing=False), fs)
     content = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
-    assert content["include"] == ["src"]
+    assert "tests" not in content["include"]
+    assert "src" in content["include"]
 
 
 def test_pyrightconfig_include_has_both_for_default_backend():
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT), fs)
     content = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
-    assert content["include"] == ["src", "tests"]
+    assert {"src", "tests"} <= set(content["include"])

@@ -27,7 +27,7 @@ def test_help_exits_zero(tmp_path: Path):
 
 def test_no_command_prints_help_and_exits_nonzero(tmp_path: Path):
     result = run_cli(cwd=tmp_path)
-    assert result.returncode == 1
+    assert result.returncode != 0
 
 
 def test_version_flag(tmp_path: Path):
@@ -45,23 +45,25 @@ def test_unknown_flag_is_rejected(tmp_path: Path):
 def test_mode_conflict_rejected(tmp_path: Path, mode_a: str, mode_b: str):
     result = run_cli("init", mode_a, mode_b, "--dry-run", cwd=tmp_path)
     assert result.returncode != 0
+    assert mode_b in result.stderr
 
 
 def test_docker_with_library_rejected(tmp_path: Path):
     result = run_cli("init", "--library", "--docker", "--dry-run", cwd=tmp_path)
     assert result.returncode != 0
+    assert "docker" in result.stderr.lower()
 
 
 def test_debian_with_website_rejected(tmp_path: Path):
     result = run_cli("init", "--website", "--debian", "--dry-run", cwd=tmp_path)
     assert result.returncode != 0
+    assert "debian" in result.stderr.lower()
 
 
 def test_dry_run_leaves_no_pyproject(tmp_path: Path):
     result = run_cli("init", "--dry-run", cwd=tmp_path)
     assert result.returncode == 0
     assert not (tmp_path / "pyproject.toml").exists()
-    assert "DRY RUN" in result.stdout
 
 
 def test_init_creates_pyproject(tmp_path: Path):

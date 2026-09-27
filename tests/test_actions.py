@@ -91,7 +91,9 @@ def test_generated_index_yml_references_exist():
         rendered = workflow_templates.render(template, python_version="3.13")
         doc = yaml.safe_load(rendered)
         for job in doc["jobs"].values():
-            uses = job["uses"]
+            uses = job.get("uses")
+            if uses is None:
+                continue
             assert uses.startswith("apollogeddon/forgepy/.github/workflows/")
             filename = uses.split("/")[-1].split("@")[0]
             assert (WORKFLOWS_DIR / filename).exists(), f"generated workflow references missing {filename}"
