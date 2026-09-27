@@ -25,12 +25,6 @@ on:
         default: true
 
 jobs:
-  auto-merge:
-    uses: ./.github/workflows/merge.yml
-    permissions:
-      contents: write
-      pull-requests: write
-
   testing:
     uses: ./.github/workflows/testing.yml
     with:
@@ -39,31 +33,15 @@ jobs:
       enable_secrets: ${{ inputs.enable_secrets }}
       artifact_name: ${{ inputs.artifact_name }}
 
+  auto-merge:
+    uses: ./.github/workflows/merge.yml
+    needs: [testing]
+    permissions:
+      contents: write
+      pull-requests: write
+
   version:
     uses: ./.github/workflows/version.yml
     needs: [testing]
     with:
       working_directory: ${{ inputs.working_directory }}
-
-  publish:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [version]
-    if: inputs.publish && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
-    permissions:
-      contents: read
-      id-token: write
-    defaults:
-      run:
-        working-directory: ${{ inputs.working_directory }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v7
-        with:
-          name: ${{ inputs.artifact_name }}
-          path: ${{ inputs.working_directory }}/dist
-      - uses: astral-sh/setup-uv@v7
-      # Publishes via PyPI Trusted Publishing (OIDC) - no token needed.
-      # Configure the trusted publisher on the PyPI project settings page first.
-      - name: Publish to PyPI
-        run: uv publish
