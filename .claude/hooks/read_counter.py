@@ -1,4 +1,7 @@
-"""PreToolUse hook (Read|Grep): nudges toward a Haiku Explore agent past CLAUDE.md's threshold."""
+"""PostToolUse hook (Read|Grep|Glob): past a threshold, nudges Claude toward an Explore agent.
+
+Uses additionalContext because a plain systemMessage only reaches the user, never the model.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +10,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-WARNING_THRESHOLD = 3
-WARNING_INTERVAL = 5
+WARNING_THRESHOLD = 10
+WARNING_INTERVAL = 8
 
 
 def main() -> None:
@@ -31,10 +34,11 @@ def main() -> None:
     repeat_warning = count > WARNING_THRESHOLD and (count - WARNING_THRESHOLD) % WARNING_INTERVAL == 0
     if first_warning or repeat_warning:
         message = (
-            f"Read/Grep call #{count} this session — CLAUDE.md says to delegate "
-            "multi-file exploration to a Haiku Explore agent instead of reading directly."
+            f"Read/Grep/Glob call #{count} this session. If you are still searching rather than "
+            "working on files you will edit, delegate the rest of the search to an Explore agent."
         )
-        sys.stdout.write(json.dumps({"systemMessage": message}))
+        output = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": message}}
+        sys.stdout.write(json.dumps(output))
 
 
 if __name__ == "__main__":

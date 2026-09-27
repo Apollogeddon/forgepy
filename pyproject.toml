@@ -61,7 +61,7 @@ lint = { shell = "ruff check --fix . && ruff format ." }
 format = "ruff format ."
 type = "basedpyright"
 test = "pytest"
-test-fast = { shell = "pytest -m 'not slow'" }
+"test:unit" = { shell = "pytest -q --no-cov -m 'not slow'" }
 security = "osv-scanner scan -r ."
 hooks = "pre-commit install"
 build = "uv build"

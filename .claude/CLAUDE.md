@@ -11,7 +11,7 @@ A `PostToolUse` hook (`.claude/hooks/read_counter.py`) reminds you past 10 Read/
 ## Quality Control
 
 - A `PostToolUse` hook (`.claude/hooks/lint_on_edit.py`) runs `ruff check --fix` and `ruff format` on every `.py` file touched by `Edit`/`Write`. Errors it can't fix are returned to you — fix them before moving on.
-- While iterating, run `uv run pytest -q --no-cov -m "not slow"` (quiet, no coverage table, skips the slow real-`uv sync` integration tests).
+- While iterating, run `uv run poe test:unit` (quiet, no coverage table, skips the slow real-`uv sync` integration tests).
 - Before reporting a non-trivial change complete, run `uv run poe lint && uv run poe type && uv run poe test`. Always run the full `uv run poe test` when a change touches config wiring, dependencies or the vendored `configs/` snapshot — only the integration tests catch those.
 - Run `/code-review` (medium+) on non-trivial diffs before considering them done; use `/simplify` as a cleanup pass afterward.
 

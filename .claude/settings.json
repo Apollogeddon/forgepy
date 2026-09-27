@@ -1,24 +1,22 @@
 {
   "hooks": {
-    "PreToolUse": [
+    "PostToolUse": [
       {
-        "matcher": "Read|Grep",
+        "matcher": "Read|Grep|Glob",
         "hooks": [
           {
             "type": "command",
-            "command": "uv run python .claude/hooks/read_counter.py",
+            "command": "uv run --no-project python \"$CLAUDE_PROJECT_DIR/.claude/hooks/read_counter.py\"",
             "timeout": 10
           }
         ]
-      }
-    ],
-    "PostToolUse": [
+      },
       {
         "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "uv run python .claude/hooks/lint_on_edit.py",
+            "command": "uv run --no-project python \"$CLAUDE_PROJECT_DIR/.claude/hooks/lint_on_edit.py\"",
             "timeout": 30
           }
         ]
@@ -27,11 +25,18 @@
   },
   "permissions": {
     "allow": [
-      "Bash(uv run basedpyright *)",
-      "Bash(uv run pytest *)",
-      "Bash(uv run poe type *)",
-      "Bash(uv run poe test *)",
-      "Bash(uv run poe sync-check *)"
+      "Bash(uv run poe lint*)",
+      "Bash(uv run poe type*)",
+      "Bash(uv run poe test*)",
+      "Bash(uv run basedpyright*)",
+      "Bash(uv run pytest*)"
+    ],
+    "deny": [
+      "Read(./uv.lock)",
+      "Read(./htmlcov/**)",
+      "Read(./coverage.json)",
+      "Read(./.coverage)",
+      "Read(./junit-report.xml)"
     ]
   }
 }
