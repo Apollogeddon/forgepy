@@ -1,10 +1,30 @@
-# forgepy
+<br />
+<div align="center">
+  <a href="https://github.com/Apollogeddon/forgepy">
+    <img src="docs/forgepy.svg" alt="Logo" width="100" height="100">
+  </a>
 
-Quality control and DevOps scaffolding for modern Python projects.
+  <h3 align="center">Forge.py</h3>
 
-`forgepy init` sets up linting, type-checking, testing, CI/CD, and packaging in one pass — so every project you start (or already have) ends up with the same solid baseline instead of hand-rolling it each time.
+  <p align="center">
+    DevOps Support and Quality Control for modern Python projects
+    <br />
+    <a href="https://github.com/Apollogeddon/forgepy"><strong>View the repository</strong></a>
+    <br />
+    <br />
+    <a href="#getting-started">Getting Started</a>
+    &middot;
+    <a href="#standardised-stack">Standardised Stack</a>
+    &middot;
+    <a href="https://github.com/Apollogeddon/forgepy/issues">Issues</a>
+  </p>
+</div>
+
+<br />
 
 ## Installation
+
+Install the tool with uv:
 
 ```bash
 uv tool install forgepy
@@ -16,56 +36,49 @@ Or run it once without installing:
 uvx forgepy init
 ```
 
-## Getting started
+## Getting Started
+
+To quickly set up your project with the recommended configurations, tasks, and CI workflows, use the `init` command.
 
 ```bash
 forgepy init [options]
 ```
 
-By default this sets up a **backend/service** project. Other modes:
+By default, this sets up a **Python Backend/Service**. You can specify other modes:
 
-* `--backend` (default) — services and applications
-* `--library` — publishable PyPI packages
-* `--website` — static documentation sites (mkdocs)
+* `--backend` (Default) for Python services and applications.
+* `--library` for publishable PyPI packages.
+* `--website` for static documentation sites (MkDocs).
 
-Running `init`:
+This command will:
 
-* **Scaffolds config** — `ruff.toml`, `pyrightconfig.json`, `pytest.toml`, `.pre-commit-config.yaml`, and mode-specific files (`Dockerfile`, `nfpm.yaml`, `mkdocs.yml`, ...)
-* **Wires up tasks** — adds `lint`, `type`, `test`, `build`, and more to `[tool.poe.tasks]` in `pyproject.toml`
-* **Creates a starter package** — `src/<name>/__init__.py` (and `__main__.py` for backends), so `uv sync` and the generated tooling work immediately on a brand-new project
-* **Is safe to re-run** — existing files are left alone unless you pass `--force`
+* **Scaffold Configs:** Create `ruff.toml`, `pyrightconfig.json`, `pytest.toml`, `.pre-commit-config.yaml`, and others depending on the mode (e.g., `Dockerfile`, `nfpm.yaml`, or `mkdocs.yml`).
+* **Inject Tasks:** Add `lint`, `type`, `test`, and `build` to `[tool.poe.tasks]` in your `pyproject.toml`.
+* **Standardise:** Create a starter package so `uv sync` and the generated tooling work immediately, and leave existing files alone unless you pass `--force`.
 
-Run `forgepy init --help` for the full flag reference (each one is self-documenting), or `forgepy --help` for all commands.
+Run `forgepy init --help` for the full flag reference.
 
-## Standardized stack
+## Standardised Stack
 
-| Category | Tool |
-| :--- | :--- |
-| **Linting & formatting** | [Ruff](https://docs.astral.sh/ruff/) |
-| **Type checking** | [basedpyright](https://docs.basedpyright.com/) (strict mode) |
-| **Testing** | [pytest](https://docs.pytest.org/) + coverage |
-| **Task running** | [poethepoet](https://poethepoet.natn.io/) |
-| **Git hooks** | [pre-commit](https://pre-commit.com/) |
-| **Commit linting** | [commitizen](https://commitizen-tools.github.io/commitizen/) |
-| **Releases** | [release-please](https://github.com/googleapis/release-please) |
-| **Security scanning** | [Gitleaks](https://github.com/gitleaks/gitleaks) + [OSV-Scanner](https://osv.dev/) |
-| **CI/CD** | Reusable GitHub Actions workflows (quality, testing, versioning, publish) |
-| **Docs sites** | [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) (`--website`) |
-| **Debian packages** | [nfpm](https://nfpm.goreleaser.com/) (`--backend --debian`) |
+Forge.py enforces a standardised stack designed for performance and reliability:
 
-## Keeping configs current: `forgepy sync`
+| Category | Tool | Description |
+| :--- | :--- | :--- |
+| **Linting & Formatting** | [Ruff](https://docs.astral.sh/ruff/) | Extremely fast linter and formatter replacing Flake8, isort, and Black. |
+| **Type Checking** | [basedpyright](https://docs.basedpyright.com/) | Strict-mode type checker built on Pyright. |
+| **Security Scanning** | [Gitleaks](https://github.com/gitleaks/gitleaks) + [OSV-Scanner](https://osv.dev/) | Secret detection and Google's vulnerability scanner for dependencies. |
+| **Testing** | [pytest](https://docs.pytest.org/) | Mature testing framework with coverage reporting. |
+| **Task Running** | [poethepoet](https://poethepoet.natn.io/) | Runs the project's tasks straight from `pyproject.toml`. |
+| **Git Hooks** | [pre-commit](https://pre-commit.com/) | Multi-language Git hooks manager. |
+| **Commits** | [commitizen](https://commitizen-tools.github.io/commitizen/) | Enforces Conventional Commits standards. |
+| **Releases** | [Release Please](https://github.com/googleapis/release-please) | Automated versioning and changelogs via GitHub Actions. |
+| **CI/CD** | [GitHub Actions](https://github.com/features/actions) | Reusable workflows for Testing, Quality, and Releases. |
 
-forgepy ships its own `ruff.toml`/`pyrightconfig.json` as the base every generated project extends, vendored into a project's `.forgepy/` directory at init time. When forgepy itself updates those defaults, run:
+## Tooling & Versioning Strategy
 
-```bash
-forgepy sync          # refresh the vendored configs
-forgepy sync --check  # report drift without writing (exit 1 if out of date)
-```
+Forge.py takes an opinionated, batteries-included approach to tooling.
 
-`sync --check` is already wired into the generated pre-commit hook and CI, so drift gets caught automatically.
-
-## Philosophy
-
-* **One place to upgrade.** forgepy bundles its own toolchain versions (ruff, basedpyright, pytest, ...) as dependencies — bump `forgepy` and every tool it configured moves with it.
-* **Real tests, not just file checks.** Every mode is exercised end-to-end (`uv sync` + the full generated task list) before a change ships, not just checked for the right files existing.
-* **Security by default.** Gitleaks and OSV-Scanner run in every generated CI pipeline, with a cooldown period on dependency updates.
+* **Managed Versions:** This package manages the versions of core tools (Ruff, basedpyright, pytest, ...) as dependencies.
+* **Simplified Upgrades:** To upgrade your linter or test runner, simply upgrade `forgepy`, then run `forgepy sync` to refresh the vendored configs in `.forgepy/` (`forgepy sync --check` reports drift without writing, and is already wired into the generated pre-commit hook and CI).
+* **Security First:** Security scanning is integrated into the standard workflow to catch vulnerabilities early.
+* **Stability:** Every mode is verified end-to-end (`uv sync` plus the full generated task list) before a new version is released.
