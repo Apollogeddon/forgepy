@@ -12,7 +12,7 @@ class DockerFeature(Feature):
     name: ClassVar[str] = "docker"
 
     def should_run(self, cfg: InitConfig) -> bool:
-        return cfg.docker and not cfg.mode.is_library
+        return cfg.docker
 
     def apply(self, ctx: FeatureContext) -> bool:
         package_name = pj.package_module_name(ctx.pyproject, ctx.cwd)
@@ -43,6 +43,6 @@ class DockerFeature(Feature):
         return ok
 
     def cleanup(self, ctx: FeatureContext) -> None:
-        if not (ctx.cfg.docker and not ctx.cfg.mode.is_library):
+        if not ctx.cfg.docker:
             remove_file(ctx, "Dockerfile")
             remove_file(ctx, ".dockerignore")

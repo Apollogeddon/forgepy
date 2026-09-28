@@ -6,8 +6,16 @@ from forgepy.config import InitConfig
 from forgepy.features import PIPELINE, FeatureContext
 from forgepy.utils.filesystem import FileSystem, LocalFileSystem
 
+EXIT_INVALID_CONFIG = 2
+
 
 def init(cfg: InitConfig, fs: FileSystem | None = None) -> int:
+    errors = cfg.validate()
+    if errors:
+        for error in errors:
+            console.err(error)
+        return EXIT_INVALID_CONFIG
+
     fs = fs or LocalFileSystem()
     cwd = cfg.target
 

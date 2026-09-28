@@ -118,12 +118,6 @@ def main(argv: list[str] | None = None) -> int:
         target=Path(args.path).resolve(),
     )
 
-    errors = cfg.validate()
-    if errors:
-        for error in errors:
-            console.err(error)
-        return 2
-
     return init(cfg)
 
 
