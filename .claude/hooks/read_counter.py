@@ -1,7 +1,5 @@
-"""PostToolUse hook (Read|Grep|Glob): past a threshold, nudges Claude toward an Explore agent.
-
-Uses additionalContext because a plain systemMessage only reaches the user, never the model.
-"""
+"""PostToolUse hook (Read|Grep|Glob): past a threshold, nudges Claude toward an Explore agent via
+additionalContext, since a plain systemMessage only reaches the user."""
 
 from __future__ import annotations
 
