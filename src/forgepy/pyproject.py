@@ -49,12 +49,7 @@ def _default_document(project_dir_name: str, python_version: str) -> TOMLDocumen
     project.add("requires-python", f">={python_version}")
     project.add("dependencies", tomlkit.array())
     doc.add("project", project)
-
-    build_system = table()
-    build_system.add("requires", tomlkit.item(["uv_build>=0.7,<0.9"]))
-    build_system.add("build-backend", "uv_build")
-    doc.add("build-system", build_system)
-
+    # [build-system] is added by BaseFeature, which knows whether the mode builds a package
     return doc
 
 
