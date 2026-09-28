@@ -15,6 +15,14 @@ on:
         required: false
         type: string
         default: '.'
+      run_tests:
+        required: false
+        type: boolean
+        default: true
+      enable_versioning:
+        required: false
+        type: boolean
+        default: true
     outputs:
       new_release_published:
         description: "Whether a new release was published"
@@ -40,8 +48,10 @@ jobs:
       working_directory: ${{ inputs.working_directory }}
       python_version: ${{ inputs.python_version }}
       enable_secrets: ${{ inputs.enable_secrets }}
+      run_tests: ${{ inputs.run_tests }}
 
   version:
+    if: inputs.enable_versioning
     uses: ./.github/workflows/version.yml
     needs: [testing]
     with:
@@ -58,7 +68,7 @@ jobs:
     needs: [version]
     if: github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
     permissions:
-      contents: write
+      contents: read
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}
@@ -86,5 +96,5 @@ jobs:
       - name: Upload .deb Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: deb-package
+          name: debian-package
           path: ${{ inputs.working_directory }}/*.deb
