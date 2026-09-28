@@ -14,7 +14,8 @@ def test_load_or_create_builds_default_when_missing():
     doc = pj.load_or_create(fs, Path("my-cool-project"), "3.13")
     assert doc["project"]["name"] == "my-cool-project"
     assert doc["project"]["requires-python"] == ">=3.13"
-    assert doc["build-system"]["build-backend"] == "uv_build"
+    # build-system depends on the mode, so BaseFeature adds it rather than the default document
+    assert "build-system" not in doc
 
 
 def test_load_or_create_normalizes_project_name():

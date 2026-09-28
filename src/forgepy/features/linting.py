@@ -106,7 +106,6 @@ class LintingFeature(Feature):
         pj.set_task(ctx.pyproject, "security", "osv-scanner scan -r .", force=ctx.cfg.force)
         pj.set_task(ctx.pyproject, "hooks", "pre-commit install", force=ctx.cfg.force)
         pj.set_task(ctx.pyproject, "sync-check", "forgepy sync --check", force=ctx.cfg.force)
-        pj.ensure_dev_dependency(ctx.pyproject, "forgepy[toolchain]")
 
         return ok
 
