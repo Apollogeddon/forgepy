@@ -1,0 +1,5 @@
+extend = ".forgepy/ruff.toml"
+target-version = "py313"
+
+[lint.per-file-ignores]
+"tests/**" = ["S101", "S603", "S607"]

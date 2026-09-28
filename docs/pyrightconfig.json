@@ -1,0 +1,6 @@
+{
+  "extends": ".forgepy/pyrightconfig.json",
+  "include": [],
+  "venvPath": ".",
+  "venv": ".venv"
+}

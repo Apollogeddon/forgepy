@@ -1,7 +1,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/Apollogeddon/forgepy">
-    <img src="docs/forgepy.svg" alt="Logo" width="100" height="100">
+    <img src="docs/docs/assets/forgepy.svg" alt="Logo" width="100" height="100">
   </a>
 
   <h3 align="center">Forge.py</h3>
@@ -9,14 +9,14 @@
   <p align="center">
     DevOps Support and Quality Control for modern Python projects
     <br />
-    <a href="https://github.com/Apollogeddon/forgepy"><strong>View the repository</strong></a>
+    <a href="https://apollogeddon.github.io/forgepy/"><strong>Explore the docs</strong></a>
     <br />
     <br />
-    <a href="#getting-started">Getting Started</a>
+    <a href="https://apollogeddon.github.io/forgepy/getting-started/">Getting Started</a>
     &middot;
-    <a href="#standardised-stack">Standardised Stack</a>
+    <a href="https://apollogeddon.github.io/forgepy/configuration/">Configuration</a>
     &middot;
-    <a href="https://github.com/Apollogeddon/forgepy/issues">Issues</a>
+    <a href="https://apollogeddon.github.io/forgepy/workflows/overview/">Workflows</a>
   </p>
 </div>
 
@@ -48,7 +48,7 @@ By default, this sets up a **Python Backend/Service**. You can specify other mod
 
 * `--backend` (Default) for Python services and applications.
 * `--library` for publishable PyPI packages.
-* `--website` for static documentation sites (MkDocs).
+* `--website` for static documentation sites (Zensical).
 
 This command will:
 

@@ -1,0 +1,32 @@
+[project]
+name = "forgepy-docs"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = []
+classifiers = ["Private :: Do Not Upload"]
+
+[build-system]
+requires = ["uv_build>=0.7,<0.9"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+# forgepy isn't on PyPI; build the docs against this checkout
+forgepy = { path = "..", editable = true }
+
+[tool.poe.tasks]
+format = "ruff format ."
+security = "osv-scanner scan -r ."
+hooks = "pre-commit install"
+sync-check = "forgepy sync --check"
+dev = "zensical serve"
+build = "zensical build"
+type = "basedpyright"
+
+[tool.poe.tasks.lint]
+shell = "ruff check --fix . && ruff format ."
+
+[dependency-groups]
+dev = ["forgepy[toolchain]", "zensical>=0.0.66,<0.1"]
