@@ -32,7 +32,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-install-package forgepy
 COPY . .
-RUN uv run --no-sync mkdocs build -d dist
+RUN uv run --no-sync zensical build
 
 FROM nginx:stable-alpine
 COPY --from=build /app/dist /usr/share/nginx/html

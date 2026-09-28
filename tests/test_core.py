@@ -140,7 +140,7 @@ def test_init_website_docker_creates_nginx_dockerfile():
     assert init(cfg, fs) == 0
     dockerfile = fs.read_text(PROJECT / "Dockerfile")
     assert "nginx" in dockerfile
-    assert "mkdocs build" in dockerfile
+    assert "zensical build" in dockerfile
 
 
 def test_init_docker_disabled_removes_dockerfile_with_force():
@@ -152,7 +152,7 @@ def test_init_docker_disabled_removes_dockerfile_with_force():
     assert not fs.exists(PROJECT / "Dockerfile")
 
 
-def test_init_website_creates_mkdocs_scaffold():
+def test_init_website_creates_site_scaffold():
     fs = MemoryFileSystem()
     cfg = InitConfig(target=PROJECT, mode=Mode.WEBSITE)
     assert init(cfg, fs) == 0
