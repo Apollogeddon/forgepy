@@ -2,10 +2,8 @@ from __future__ import annotations
 
 # Plain (non f-string) templates — see workflows.py for why.
 
-# The venv holds platform-specific wheels, so it's built per target platform. uv comes from pip
-# because the ghcr.io/astral-sh/uv images only ship linux/amd64 and linux/arm64, while uv's wheels
-# cover every platform python:slim does. `--frozen` because CI already enforces the lockfile, and it
-# lets uv skip dev-only sources (like forgepy) the build context can't reach.
+# Built per target platform (the venv holds platform-specific wheels); uv comes from pip since the
+# astral-sh/uv image only ships linux/amd64 and linux/arm64, unlike python:slim.
 DOCKERFILE_BACKEND = """\
 # syntax=docker/dockerfile:1
 FROM python:__FORGEPY_PYTHON_VERSION__-slim-bookworm AS build
@@ -24,9 +22,8 @@ ENV PATH="/app/.venv/bin:$PATH"
 CMD ["python", "-m", "__FORGEPY_PACKAGE_NAME__"]
 """
 
-# The static site is platform-independent, so it's built once on the build host and only the nginx
-# runtime is per target platform. mkdocs is a dev dependency, so the dev group is installed minus
-# forgepy itself, which the build doesn't need; `uv run --no-sync` stops uv re-adding it.
+# Built once on the build host (the static site is platform-independent) - only the nginx runtime
+# stage is per-platform. `--no-sync` stops uv re-adding forgepy, which the build doesn't need.
 DOCKERFILE_WEBSITE = """\
 # syntax=docker/dockerfile:1
 FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:python__FORGEPY_PYTHON_VERSION__-bookworm-slim AS build

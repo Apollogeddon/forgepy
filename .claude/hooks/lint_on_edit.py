@@ -1,7 +1,5 @@
-"""PostToolUse hook (Edit|Write): runs ruff check --fix + ruff format on the touched file.
-
-Unfixable diagnostics exit 2 so they're fed back to Claude (plain stdout only reaches the transcript).
-"""
+"""PostToolUse hook (Edit|Write): runs ruff check --fix + ruff format, exiting 2 on unfixable
+diagnostics so they reach Claude (plain stdout only reaches the transcript)."""
 
 from __future__ import annotations
 

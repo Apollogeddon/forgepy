@@ -33,9 +33,8 @@ on:
         type: boolean
         default: true
 
-# No job-level permissions: GitHub validates a nested workflow's requested permissions against
-# the caller's before evaluating `if:`, so declaring packages: write here would break every caller
-# that doesn't grant it, even with Docker disabled. Jobs inherit the caller's token instead.
+# No job-level permissions: a caller lacking packages: write would fail even with Docker disabled,
+# since GitHub checks requested permissions before `if:` - jobs inherit the caller's token instead.
 
 jobs:
   prepare:
