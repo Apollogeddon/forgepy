@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 # Plain templates: GitHub Actions "${{ ... }}" collides with f-string/Template syntax,
 # so substitution uses str.replace() on __FORGEPY_*__ tokens instead.
 
@@ -88,12 +90,28 @@ jobs:
 """
 
 
+DOCKER_JOB = """
+  docker:
+    needs: __FORGEPY_PIPELINE__
+    uses: apollogeddon/forgepy/.github/workflows/docker.yml@main
+    permissions:
+      contents: read
+      packages: write
+    with:
+      push: ${{ github.ref == 'refs/heads/main' && needs.__FORGEPY_PIPELINE__.outputs.new_release_published == 'true' }}
+      version: ${{ needs.__FORGEPY_PIPELINE__.outputs.version }}
+    secrets: inherit
+"""
+
+
 def render(template: str, *, python_version: str, docker: bool = False) -> str:
     rendered = template.replace("__FORGEPY_PYTHON_VERSION__", python_version)
     if docker:
-        # Docker is an add-on to any non-library pipeline, so it's layered onto the mode's template.
-        # packages: write lets the reusable docker.yml push to GHCR with the caller's token.
-        permission = "      pull-requests: write\n"
-        rendered = rendered.replace(permission, permission + "      packages: write\n", 1)
-        rendered = rendered.replace("    with:\n", "    with:\n      docker: true\n", 1)
+        # Docker is a separate job rather than part of the shared pipelines so projects without it
+        # don't carry a permanently skipped job; it runs after the pipeline and pushes on release.
+        match = re.search(r"^jobs:\n {2}([\w-]+):", rendered, re.MULTILINE)
+        if match is None:
+            msg = "workflow template has no pipeline job"
+            raise ValueError(msg)
+        rendered += DOCKER_JOB.replace("__FORGEPY_PIPELINE__", match.group(1))
     return rendered
