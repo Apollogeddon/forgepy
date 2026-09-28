@@ -56,10 +56,10 @@ hide:
 
     ---
 
-    Install Forge.py as a uv tool.
+    Install Forge.py from GitHub as a uv tool.
 
     ```bash
-    uv tool install forgepy
+    uv tool install git+https://github.com/apollogeddon/forgepy
     ```
 
 -   __02 · Initialise__

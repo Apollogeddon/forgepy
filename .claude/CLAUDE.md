@@ -34,4 +34,4 @@ Adding or changing a CLI flag or feature usually touches all of these — check 
 3. `src/forgepy/features/<feature>.py` — `should_run`/`apply`/`cleanup`; register new features in `PIPELINE` in `features/__init__.py`, in pipeline order.
 4. `src/forgepy/templates/<name>.py` — generated content; `src/forgepy/configs/` + `sync.py` if it changes the vendored snapshot.
 5. Tests: `tests/test_cli.py` / `test_core.py` (unit); `test_integration.py` if it changes what gets installed or run; `test_actions.py` for workflow templates; `test_sync.py` for snapshot changes.
-6. `README.md` if user-facing behaviour changes (forgepy has no docs site).
+6. Docs: `docs/docs/getting-started.md` (flag and task reference), `configuration.md`, `workflows/*.md` for workflow changes, and `README.md` for user-facing changes.

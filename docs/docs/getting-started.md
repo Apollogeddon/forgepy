@@ -15,16 +15,16 @@ description: Install Forge.py and bootstrap a project with the init CLI.
 
 ### 1. Installation
 
-Install Forge.py as a uv tool:
+forgepy isn't published to PyPI yet, so install it from GitHub:
 
 ```bash
-uv tool install forgepy
+uv tool install git+https://github.com/apollogeddon/forgepy
 ```
 
 Or run it once without installing:
 
 ```bash
-uvx forgepy init
+uvx --from git+https://github.com/apollogeddon/forgepy forgepy init
 ```
 
 ### 2. Initialisation
@@ -101,6 +101,8 @@ forgepy sync [--check]
 | `--dry-run` | Show what would change without writing anything. |
 | `--python VERSION` | Target Python version (default: `3.13`). |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
+
+`--no-testing` and `--no-versioning` also switch off the matching step in the generated CI workflow.
 
 `forgepy sync` refreshes the managed base configs under `.forgepy/` — see [Configuration](configuration.md#managed-configs).
 

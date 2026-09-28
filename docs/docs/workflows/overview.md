@@ -99,7 +99,9 @@ jobs:
 | `python_version` | `'3.13'` | Python version for every job |
 | `working_directory` | `'.'` | Directory containing `pyproject.toml` |
 | `enable_secrets` | `true` | Run the Gitleaks secret scan |
-| `artifact_name` | `'dist'` | Name of the build artifact passed between jobs |
+| `artifact_name` | `'dist'` | Name of the build artifact passed between jobs (`library.yml`, `website.yml`) |
+| `run_tests` | `true` | Run pytest — `forgepy init --no-testing` sets it to `false` |
+| `enable_versioning` | `true` | Run release-please — `forgepy init --no-versioning` sets it to `false` |
 
 ## Common Secrets
 

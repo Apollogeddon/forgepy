@@ -52,7 +52,9 @@ Outputs `new_release_published`, `version` and `tag_name` for the delivery jobs.
 
 1. Calls → `testing.yml` to validate and build the project.
 2. Calls → `merge.yml` to auto-merge Dependabot PRs once testing passes. *(Needs: testing)*
-3. Calls → `version.yml` to trigger a release on the main branch. *(Needs: testing)*
+3. Calls → `version.yml` to trigger a release on the main branch. Skip with `enable_versioning: false`. *(Needs: testing)*
+
+Pass `run_tests: false` to skip the test suite. `service.yml`, `library.yml` and `debian.yml` all accept `run_tests` and `enable_versioning`, and `forgepy init` sets them for `--no-testing` and `--no-versioning`.
 
 ## library.yml
 
@@ -97,7 +99,7 @@ Configure the trusted publisher on your PyPI project's settings page first.
 | `platforms` | `linux/amd64,linux/arm64` | Comma-separated platforms, e.g. `linux/amd64,linux/arm64,linux/arm/v7` |
 | `native_arm` | `true` | Build arm64 on native Arm runners; set `false` to emulate (e.g. if Arm runners aren't available to a private repo) |
 
-The generated Dockerfiles build platform-independent work once on the build host and only the platform-specific parts per target. Supported platforms follow the base images:
+The website Dockerfile builds the static site once on the build host and only the nginx stage per target platform. The backend builds entirely per target, because the virtual environment holds platform-specific wheels. Supported platforms follow the base images:
 
 | Image | Platforms |
 | :--- | :--- |
