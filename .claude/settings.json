@@ -33,6 +33,7 @@
     ],
     "deny": [
       "Read(./uv.lock)",
+      "Read(./docs/uv.lock)",
       "Read(./htmlcov/**)",
       "Read(./coverage.json)",
       "Read(./.coverage)",
