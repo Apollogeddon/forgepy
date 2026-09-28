@@ -1,0 +1,164 @@
+name: Docker Image
+
+on:
+  workflow_call:
+    inputs:
+      platforms:
+        description: "Comma-separated target platforms, e.g. linux/amd64,linux/arm64,linux/arm/v7"
+        required: false
+        type: string
+        default: 'linux/amd64,linux/arm64'
+      push:
+        description: "Push to the registry; otherwise build only (validates the Dockerfile on PRs)"
+        required: false
+        type: boolean
+        default: false
+      version:
+        description: "Release version used for semver tags"
+        required: false
+        type: string
+        default: ''
+      image:
+        description: "Image name; defaults to ghcr.io/<owner>/<repo>"
+        required: false
+        type: string
+        default: ''
+      working_directory:
+        required: false
+        type: string
+        default: '.'
+      native_arm:
+        description: "Build linux/arm64 on GitHub's native Arm runners instead of QEMU"
+        required: false
+        type: boolean
+        default: true
+
+# No job-level permissions: GitHub validates a nested workflow's requested permissions against
+# the caller's before evaluating `if:`, so declaring packages: write here would break every caller
+# that doesn't grant it, even with Docker disabled. Jobs inherit the caller's token instead.
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Resolve image name
+        id: image
+        env:
+          IMAGE: ${{ inputs.image }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          image="${IMAGE:-ghcr.io/$REPOSITORY}"
+          # GHCR rejects uppercase repository names
+          echo "image=${image,,}" >> "$GITHUB_OUTPUT"
+      - name: Build platform matrix
+        id: matrix
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+          NATIVE_ARM: ${{ inputs.native_arm }}
+        run: |
+          # amd64 and (optionally) arm64 build natively; every other platform is emulated with QEMU
+          matrix=$(jq -cn --arg platforms "$PLATFORMS" --arg native_arm "$NATIVE_ARM" '
+            [ $platforms | split(",")[] | gsub("\\s"; "") | select(length > 0)
+              | . as $p
+              | ($p == "linux/arm64" and $native_arm == "true") as $arm
+              | { platform: $p,
+                  runner: (if $arm then "ubuntu-24.04-arm" else "ubuntu-latest" end),
+                  emulate: ($p != "linux/amd64" and ($arm | not)),
+                  slug: ($p | gsub("/"; "-")) } ]
+            | { include: . }')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [prepare]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up QEMU
+        if: matrix.emulate
+        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        if: inputs.push
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.working_directory }}
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=docker-${{ matrix.slug }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.slug }}
+          # Per-platform images are pushed untagged by digest; the merge job tags the combined manifest
+          outputs: ${{ inputs.push && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', needs.prepare.outputs.image) || 'type=cacheonly' }}
+          provenance: ${{ inputs.push && 'mode=max' || 'false' }}
+          sbom: ${{ inputs.push }}
+      - name: Export digest
+        if: inputs.push
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - name: Upload digest
+        if: inputs.push
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-digest-${{ matrix.slug }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    if: inputs.push
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v7
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: docker-digest-*
+          merge-multiple: true
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Compute tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.prepare.outputs.image }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ inputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
+            type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
+            type=sha
+            type=raw,value=latest
+      - name: Create multi-platform manifest
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$IMAGE@sha256:%s " *)
+      - name: Inspect image
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: docker buildx imagetools inspect "$IMAGE:$VERSION"

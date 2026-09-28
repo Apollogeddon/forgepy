@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import tomlkit
+import yaml
 
 from forgepy.config import InitConfig, Mode
 from forgepy.core import init
@@ -103,7 +105,33 @@ def test_init_backend_docker_creates_uv_based_dockerfile():
     cfg = InitConfig(target=PROJECT, docker=True)
     assert init(cfg, fs) == 0
     dockerfile = fs.read_text(PROJECT / "Dockerfile")
-    assert "astral-sh/uv" in dockerfile
+    assert "uv sync" in dockerfile
+
+
+def test_init_website_docker_builds_static_site_on_build_host():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, mode=Mode.WEBSITE, docker=True), fs)
+    assert "FROM --platform=$BUILDPLATFORM" in fs.read_text(PROJECT / "Dockerfile")
+
+
+@pytest.mark.parametrize(
+    ("mode", "debian", "job"),
+    [(Mode.BACKEND, False, "service"), (Mode.WEBSITE, False, "website"), (Mode.BACKEND, True, "debian")],
+)
+def test_init_docker_enables_pipeline_docker_input(mode: Mode, debian: bool, job: str):
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, mode=mode, debian=debian, docker=True), fs)
+    workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
+    assert workflow["jobs"][job]["with"]["docker"] is True
+    assert workflow["jobs"][job]["permissions"]["packages"] == "write"
+
+
+def test_init_without_docker_leaves_pipeline_docker_input_off():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
+    assert "docker" not in workflow["jobs"]["service"]["with"]
+    assert "packages" not in workflow["jobs"]["service"]["permissions"]
 
 
 def test_init_website_docker_creates_nginx_dockerfile():

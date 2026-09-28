@@ -6,6 +6,8 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import uuid
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -37,7 +39,7 @@ def _use_local_forgepy_source(pyproject_path: Path) -> None:
     pyproject_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
 
 
-def _run(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+def _run(args: list[str], cwd: Path, timeout: int = 180) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         args,
         cwd=cwd,
@@ -45,7 +47,7 @@ def _run(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=180,
+        timeout=timeout,
         check=False,
     )
     assert result.returncode == 0, (
@@ -113,3 +115,47 @@ def test_backend_debian_scaffold_syncs_and_validates(tmp_path: Path):
     project = _scaffold(tmp_path, "--backend", "--debian")
     _run(["uv", "run", "poe", "lint"], cwd=project)
     _run(["uv", "run", "poe", "type"], cwd=project)
+
+
+HAS_DOCKER = (
+    shutil.which("docker") is not None
+    and subprocess.run(["docker", "info"], capture_output=True, check=False).returncode == 0
+)
+requires_docker = pytest.mark.skipif(not HAS_DOCKER, reason="docker not available")
+
+
+@pytest.fixture
+def docker_image() -> Iterator[str]:
+    tag = f"forgepy-e2e:{uuid.uuid4().hex[:12]}"
+    yield tag
+    subprocess.run(["docker", "rmi", "-f", tag], capture_output=True, check=False)
+
+
+def _vendor_forgepy_into_context(project: Path) -> None:
+    """uv resolves the forgepy path source from the lockfile even when skipping it, and the
+    repo-root path _scaffold uses is outside the Docker build context, so copy the repo in."""
+    ignore = shutil.ignore_patterns(".git", ".venv", "*_cache", "__pycache__", "htmlcov", "dist")
+    shutil.copytree(REPO_ROOT, project / "vendor" / "forgepy", ignore=ignore)
+    pyproject_path = project / "pyproject.toml"
+    doc = tomlkit.parse(pyproject_path.read_text(encoding="utf-8"))
+    source = tomlkit.inline_table()
+    source["path"] = "vendor/forgepy"
+    source["editable"] = True
+    doc["tool"]["uv"]["sources"]["forgepy"] = source
+    pyproject_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+    _run(["uv", "lock"], cwd=project)
+
+
+@requires_docker
+def test_backend_docker_image_builds_and_runs(tmp_path: Path, docker_image: str):
+    project = _scaffold(tmp_path, "--backend", "--docker")
+    _vendor_forgepy_into_context(project)
+    _run(["docker", "build", "-t", docker_image, "."], cwd=project, timeout=600)
+    _run(["docker", "run", "--rm", docker_image], cwd=project)
+
+
+@requires_docker
+def test_website_docker_image_builds(tmp_path: Path, docker_image: str):
+    project = _scaffold(tmp_path, "--website", "--docker")
+    _vendor_forgepy_into_context(project)
+    _run(["docker", "build", "-t", docker_image, "."], cwd=project, timeout=600)

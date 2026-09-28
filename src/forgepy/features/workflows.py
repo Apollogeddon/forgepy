@@ -24,5 +24,6 @@ class WorkflowFeature(Feature):
         else:
             template = workflow_templates.SERVICE_WORKFLOW
 
-        content = workflow_templates.render(template, python_version=cfg.python_version)
+        docker = cfg.docker and not cfg.mode.is_library
+        content = workflow_templates.render(template, python_version=cfg.python_version, docker=docker)
         return create_file(ctx, ".github/workflows/index.yml", content)

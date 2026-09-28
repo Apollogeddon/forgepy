@@ -86,5 +86,12 @@ jobs:
 """
 
 
-def render(template: str, *, python_version: str) -> str:
-    return template.replace("__FORGEPY_PYTHON_VERSION__", python_version)
+def render(template: str, *, python_version: str, docker: bool = False) -> str:
+    rendered = template.replace("__FORGEPY_PYTHON_VERSION__", python_version)
+    if docker:
+        # Docker is an add-on to any non-library pipeline, so it's layered onto the mode's template.
+        # packages: write lets the reusable docker.yml push to GHCR with the caller's token.
+        permission = "      pull-requests: write\n"
+        rendered = rendered.replace(permission, permission + "      packages: write\n", 1)
+        rendered = rendered.replace("    with:\n", "    with:\n      docker: true\n", 1)
+    return rendered
