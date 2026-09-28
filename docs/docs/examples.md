@@ -95,6 +95,8 @@ jobs:
     uses: apollogeddon/forgepy/.github/workflows/testing.yml@main
     with:
       python_version: ${{ matrix.python }}
+      # artifact names must be unique per run
+      artifact_name: dist-py${{ matrix.python }}
 ```
 
 ### Custom Build Steps

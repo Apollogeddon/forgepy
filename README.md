@@ -24,16 +24,16 @@
 
 ## Installation
 
-Install the tool with uv:
+forgepy isn't published to PyPI yet, so install it from GitHub:
 
 ```bash
-uv tool install forgepy
+uv tool install git+https://github.com/apollogeddon/forgepy
 ```
 
 Or run it once without installing:
 
 ```bash
-uvx forgepy init
+uvx --from git+https://github.com/apollogeddon/forgepy forgepy init
 ```
 
 ## Getting Started

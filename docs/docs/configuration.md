@@ -130,7 +130,7 @@ Backends and libraries use the `uv_build` backend. Backends and websites are mar
 
 `--docker` adds a multi-stage `Dockerfile`:
 
-- **Backend:** builds the virtual environment with uv on `python:<version>-slim-bookworm` and runs `python -m <package>`. uv is installed with pip, whose wheels cover every platform `python:slim` does.
+- **Backend:** builds the virtual environment with uv on `python:<version>-slim-bookworm` and runs `python -m <package>` as a non-root `app` user. uv is installed with pip, whose wheels cover every platform `python:slim` does; pass `--build-arg UV_VERSION=<version>` to change it.
 - **Website:** builds the static site with Zensical once on the build host and serves it with `nginx:stable-alpine` on port 80.
 
 CI builds the image for every configured platform — see [Job Reference](workflows/reference.md#dockeryml).
