@@ -1,0 +1,62 @@
+site_name: Forge.py
+site_description: DevOps support and quality control for modern Python projects.
+site_url: https://apollogeddon.github.io/forgepy/
+repo_url: https://github.com/Apollogeddon/forgepy
+repo_name: Apollogeddon/forgepy
+edit_uri: ""
+
+theme:
+  name: material
+  variant: classic
+  logo: assets/forgepy.svg
+  favicon: assets/forgepy.svg
+  palette:
+    scheme: slate
+    primary: custom
+    accent: custom
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.highlight
+    - toc.follow
+
+docs_dir: docs
+site_dir: dist
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Overview:
+      - Getting Started: getting-started.md
+      - Configuration: configuration.md
+      - Philosophy & Stack: philosophy.md
+      - Contributing: contributing.md
+      - Migration: migration.md
+  - Reference:
+      - Examples: examples.md
+      - Workflows:
+          - Overview: workflows/overview.md
+          - Job Reference: workflows/reference.md

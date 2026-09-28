@@ -51,6 +51,8 @@ forgepy = { workspace = true }
 
 [tool.uv.workspace]
 members = ["."]
+# docs/ is the documentation site's own uv project, not a workspace member
+exclude = ["docs"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"

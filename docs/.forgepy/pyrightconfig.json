@@ -1,0 +1,6 @@
+{
+  "typeCheckingMode": "strict",
+  "reportUnusedImport": "error",
+  "reportUnusedVariable": "error",
+  "reportUnnecessaryTypeIgnoreComment": "warning"
+}

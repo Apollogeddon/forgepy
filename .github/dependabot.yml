@@ -22,6 +22,20 @@ updates:
     cooldown:
       default-days: 3
 
+  # The documentation site is its own uv project
+  - package-ecosystem: "uv"
+    directory: "/docs"
+    schedule:
+      interval: "daily"
+    groups:
+      docs:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore(docs)"
+    cooldown:
+      default-days: 3
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

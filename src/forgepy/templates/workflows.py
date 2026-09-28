@@ -59,6 +59,8 @@ jobs:
     uses: apollogeddon/forgepy/.github/workflows/website.yml@main
     permissions:
       contents: write
+      pages: write
+      id-token: write
       pull-requests: write
     with:
       python_version: '__FORGEPY_PYTHON_VERSION__'
