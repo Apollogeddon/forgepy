@@ -62,5 +62,5 @@ jobs:
       - name: Type Check
         run: uv run basedpyright
       - name: Check forgepy config drift
-        if: hashFiles('.forgepy/**') != ''
+        if: hashFiles(format('{0}/.forgepy/**', inputs.working_directory)) != ''
         run: uv run forgepy sync --check

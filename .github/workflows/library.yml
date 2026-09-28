@@ -15,6 +15,14 @@ on:
         required: false
         type: string
         default: '.'
+      run_tests:
+        required: false
+        type: boolean
+        default: true
+      enable_versioning:
+        required: false
+        type: boolean
+        default: true
       artifact_name:
         required: false
         type: string
@@ -31,6 +39,7 @@ jobs:
       working_directory: ${{ inputs.working_directory }}
       python_version: ${{ inputs.python_version }}
       enable_secrets: ${{ inputs.enable_secrets }}
+      run_tests: ${{ inputs.run_tests }}
       artifact_name: ${{ inputs.artifact_name }}
 
   auto-merge:
@@ -41,6 +50,7 @@ jobs:
       pull-requests: write
 
   version:
+    if: inputs.enable_versioning
     uses: ./.github/workflows/version.yml
     needs: [testing]
     with:
