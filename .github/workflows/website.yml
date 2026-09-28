@@ -26,6 +26,7 @@ on:
 jobs:
   auto-merge:
     uses: ./.github/workflows/merge.yml
+    needs: [testing]
     permissions:
       contents: write
       pull-requests: write
