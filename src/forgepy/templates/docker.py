@@ -6,8 +6,12 @@ from __future__ import annotations
 # astral-sh/uv image only ships linux/amd64 and linux/arm64, unlike python:slim.
 DOCKERFILE_BACKEND = """\
 # syntax=docker/dockerfile:1
+# Override with --build-arg UV_VERSION=<version> to match the uv you develop with
+ARG UV_VERSION=0.12.19
+
 FROM python:__FORGEPY_PYTHON_VERSION__-slim-bookworm AS build
-RUN pip install --no-cache-dir uv==0.12.19
+ARG UV_VERSION
+RUN pip install --no-cache-dir "uv==${UV_VERSION}"
 ENV UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
@@ -16,9 +20,11 @@ COPY . .
 RUN uv sync --frozen --no-dev
 
 FROM python:__FORGEPY_PYTHON_VERSION__-slim-bookworm
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin app
 WORKDIR /app
 COPY --from=build /app /app
 ENV PATH="/app/.venv/bin:$PATH"
+USER app
 CMD ["python", "-m", "__FORGEPY_PACKAGE_NAME__"]
 """
 
