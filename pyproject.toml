@@ -6,6 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Apollogeddon" }
 ]
+license = "MIT"
 keywords = ["scaffolding", "cli", "project-generator", "ruff", "uv", "ci-cd"]
 requires-python = ">=3.11"
 dependencies = [
