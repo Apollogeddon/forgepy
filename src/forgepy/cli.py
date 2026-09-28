@@ -34,7 +34,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--library", action="store_const", dest="mode", const=Mode.LIBRARY, help="Publishable PyPI package"
     )
     mode_group.add_argument(
-        "--website", action="store_const", dest="mode", const=Mode.WEBSITE, help="Static docs site (mkdocs)"
+        "--website", action="store_const", dest="mode", const=Mode.WEBSITE, help="Static docs site (Zensical)"
     )
     init_parser.set_defaults(mode=None)
 

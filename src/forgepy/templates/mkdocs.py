@@ -4,6 +4,7 @@ MKDOCS_YML = """\
 site_name: __FORGEPY_PROJECT_NAME__
 theme:
   name: material
+  variant: classic
 docs_dir: docs
 site_dir: dist
 nav:

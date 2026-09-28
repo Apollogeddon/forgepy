@@ -17,7 +17,8 @@
     "sdist",
     "tomlkit",
     "venv",
-    "watchmedo"
+    "watchmedo",
+    "zensical"
   ],
   "editor.codeActionsOnSave": {
     "source.organizeImports.ruff": "explicit",

@@ -31,9 +31,10 @@ class BuildFeature(Feature):
                 mkdocs_templates.render(mkdocs_templates.DOCS_INDEX_MD, project_name=project_name),
             )
 
-            pj.ensure_dev_dependency(ctx.pyproject, "mkdocs-material")
-            pj.set_task(ctx.pyproject, "dev", "mkdocs serve", force=force)
-            pj.set_task(ctx.pyproject, "build", "mkdocs build -d dist", force=force)
+            # Zensical builds MkDocs 1.x projects; MkDocs itself is unmaintained and 2.0 breaks Material
+            pj.ensure_dev_dependency(ctx.pyproject, "zensical>=0.0.66,<0.1")
+            pj.set_task(ctx.pyproject, "dev", "zensical serve", force=force)
+            pj.set_task(ctx.pyproject, "build", "zensical build", force=force)
             pj.set_task(ctx.pyproject, "type", "basedpyright", force=force)
             return ok
         package_name = pj.package_module_name(ctx.pyproject, ctx.cwd)
