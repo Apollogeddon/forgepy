@@ -8,7 +8,7 @@ import tomlkit
 import yaml
 
 from forgepy.config import InitConfig, Mode
-from forgepy.core import init
+from forgepy.core import EXIT_INVALID_CONFIG, init
 from forgepy.utils.filesystem import MemoryFileSystem
 
 PROJECT = Path("project")
@@ -106,12 +106,8 @@ def test_init_backend_docker_creates_uv_based_dockerfile():
     assert init(cfg, fs) == 0
     dockerfile = fs.read_text(PROJECT / "Dockerfile")
     assert "uv sync" in dockerfile
-
-
-def test_init_website_docker_builds_static_site_on_build_host():
-    fs = MemoryFileSystem()
-    init(InitConfig(target=PROJECT, mode=Mode.WEBSITE, docker=True), fs)
-    assert "FROM --platform=$BUILDPLATFORM" in fs.read_text(PROJECT / "Dockerfile")
+    assert "ARG UV_VERSION=" in dockerfile
+    assert "USER app" in dockerfile
 
 
 @pytest.mark.parametrize(
@@ -143,6 +139,58 @@ def test_init_website_docker_creates_nginx_dockerfile():
     dockerfile = fs.read_text(PROJECT / "Dockerfile")
     assert "nginx" in dockerfile
     assert "zensical build" in dockerfile
+    # the static site is built once on the build host; only nginx is per target platform
+    assert "FROM --platform=$BUILDPLATFORM" in dockerfile
+
+
+def test_init_rejects_invalid_combinations_without_writing():
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, mode=Mode.LIBRARY, docker=True), fs) == EXIT_INVALID_CONFIG
+    assert not fs.exists(PROJECT / "pyproject.toml")
+
+
+def test_init_always_adds_toolchain_from_git_even_without_linting():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, linting=False), fs)
+    doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
+    assert "forgepy[toolchain]" in list(doc["dependency-groups"]["dev"])
+    assert doc["tool"]["uv"]["sources"]["forgepy"]["git"].startswith("https://github.com/")
+
+
+def test_init_keeps_an_existing_forgepy_source_even_with_force():
+    fs = MemoryFileSystem()
+    existing = '[project]\nname = "project"\n\n[tool.uv.sources]\nforgepy = { path = "../forgepy" }\n'
+    fs.write_text(PROJECT / "pyproject.toml", existing)
+    init(InitConfig(target=PROJECT, force=True), fs)
+    doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
+    assert doc["tool"]["uv"]["sources"]["forgepy"]["path"] == "../forgepy"
+
+
+def test_init_backend_has_uv_build_system():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
+    assert doc["build-system"]["build-backend"] == "uv_build"
+
+
+def test_init_website_has_no_build_system():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, mode=Mode.WEBSITE), fs)
+    assert "build-system" not in tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
+
+
+@pytest.mark.parametrize(
+    ("cfg", "key"),
+    [
+        (InitConfig(target=PROJECT, testing=False), "run_tests"),
+        (InitConfig(target=PROJECT, versioning=False), "enable_versioning"),
+    ],
+)
+def test_init_disabled_features_switch_off_pipeline_steps(cfg: InitConfig, key: str):
+    fs = MemoryFileSystem()
+    init(cfg, fs)
+    workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
+    assert workflow["jobs"]["service"]["with"][key] is False
 
 
 def test_init_docker_disabled_removes_dockerfile_with_force():

@@ -89,7 +89,8 @@ def test_generated_index_yml_references_exist():
         workflow_templates.DEBIAN_WORKFLOW,
     ):
         docker = template is not workflow_templates.LIBRARY_WORKFLOW
-        rendered = workflow_templates.render(template, python_version="3.13", docker=docker)
+        inputs = {"run_tests": False, "enable_versioning": False}
+        rendered = workflow_templates.render(template, python_version="3.13", docker=docker, inputs=inputs)
         doc = yaml.safe_load(rendered)
         for job in doc["jobs"].values():
             uses = job.get("uses")
@@ -98,6 +99,11 @@ def test_generated_index_yml_references_exist():
             assert uses.startswith("apollogeddon/forgepy/.github/workflows/")
             filename = uses.split("/")[-1].split("@")[0]
             assert (WORKFLOWS_DIR / filename).exists(), f"generated workflow references missing {filename}"
+            with (WORKFLOWS_DIR / filename).open(encoding="utf-8") as f:
+                declared = _declared_inputs(yaml.safe_load(f))
+            with_block: YamlDoc = job.get("with") or {}
+            for key in with_block:
+                assert key in declared, f"generated workflow passes undeclared input '{key}' to {filename}"
 
 
 @pytest.mark.parametrize("name", ["service.yml", "website.yml", "debian.yml"])
