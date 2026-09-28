@@ -111,18 +111,19 @@ jobs:
 
 ### Building Docker Images for More Platforms
 
-With `--docker`, CI builds `linux/amd64` and `linux/arm64`. Add platforms with `docker_platforms`:
+With `--docker`, CI builds `linux/amd64` and `linux/arm64`. Add platforms with the `docker` job's `platforms` input:
 
 ```yaml
 jobs:
-  service:
-    uses: apollogeddon/forgepy/.github/workflows/service.yml@main
+  docker:
+    needs: service
+    uses: apollogeddon/forgepy/.github/workflows/docker.yml@main
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
       packages: write
     with:
-      docker: true
-      docker_platforms: 'linux/amd64,linux/arm64,linux/arm/v7'
+      push: ${{ github.ref == 'refs/heads/main' && needs.service.outputs.new_release_published == 'true' }}
+      version: ${{ needs.service.outputs.version }}
+      platforms: 'linux/amd64,linux/arm64,linux/arm/v7'
     secrets: inherit
 ```

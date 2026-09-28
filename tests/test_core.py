@@ -118,20 +118,22 @@ def test_init_website_docker_builds_static_site_on_build_host():
     ("mode", "debian", "job"),
     [(Mode.BACKEND, False, "service"), (Mode.WEBSITE, False, "website"), (Mode.BACKEND, True, "debian")],
 )
-def test_init_docker_enables_pipeline_docker_input(mode: Mode, debian: bool, job: str):
+def test_init_docker_adds_docker_job_after_pipeline(mode: Mode, debian: bool, job: str):
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT, mode=mode, debian=debian, docker=True), fs)
     workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
-    assert workflow["jobs"][job]["with"]["docker"] is True
-    assert workflow["jobs"][job]["permissions"]["packages"] == "write"
+    docker = workflow["jobs"]["docker"]
+    assert "/docker.yml@" in docker["uses"]
+    assert docker["needs"] == job
+    assert docker["permissions"]["packages"] == "write"
+    assert f"needs.{job}.outputs.version" in docker["with"]["version"]
 
 
-def test_init_without_docker_leaves_pipeline_docker_input_off():
+def test_init_without_docker_has_no_docker_job():
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT), fs)
     workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
-    assert "docker" not in workflow["jobs"]["service"]["with"]
-    assert "packages" not in workflow["jobs"]["service"]["permissions"]
+    assert list(workflow["jobs"]) == ["service"]
 
 
 def test_init_website_docker_creates_nginx_dockerfile():

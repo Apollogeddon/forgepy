@@ -33,8 +33,7 @@ on:
         type: boolean
         default: true
 
-# No job-level permissions: a caller lacking packages: write would fail even with Docker disabled,
-# since GitHub checks requested permissions before `if:` - jobs inherit the caller's token instead.
+# Jobs inherit the calling job's token, which needs packages: write to push.
 
 jobs:
   prepare:

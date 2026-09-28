@@ -88,7 +88,8 @@ def test_generated_index_yml_references_exist():
         workflow_templates.WEBSITE_WORKFLOW,
         workflow_templates.DEBIAN_WORKFLOW,
     ):
-        rendered = workflow_templates.render(template, python_version="3.13")
+        docker = template is not workflow_templates.LIBRARY_WORKFLOW
+        rendered = workflow_templates.render(template, python_version="3.13", docker=docker)
         doc = yaml.safe_load(rendered)
         for job in doc["jobs"].values():
             uses = job.get("uses")
@@ -97,3 +98,14 @@ def test_generated_index_yml_references_exist():
             assert uses.startswith("apollogeddon/forgepy/.github/workflows/")
             filename = uses.split("/")[-1].split("@")[0]
             assert (WORKFLOWS_DIR / filename).exists(), f"generated workflow references missing {filename}"
+
+
+@pytest.mark.parametrize("name", ["service.yml", "website.yml", "debian.yml"])
+def test_pipelines_expose_release_outputs_for_docker_job(name: str):
+    """The generated docker job reads the pipeline's version outputs to decide when to push."""
+    with (WORKFLOWS_DIR / name).open(encoding="utf-8") as f:
+        doc: YamlDoc = yaml.safe_load(f)
+    on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
+    workflow_call: YamlDoc = on_block.get("workflow_call") or {}
+    outputs: YamlDoc = workflow_call.get("outputs") or {}
+    assert {"new_release_published", "version"} <= set(outputs)
