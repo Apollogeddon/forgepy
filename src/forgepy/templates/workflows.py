@@ -104,8 +104,12 @@ DOCKER_JOB = """
 """
 
 
-def render(template: str, *, python_version: str, docker: bool = False) -> str:
+def render(template: str, *, python_version: str, docker: bool = False, inputs: dict[str, bool] | None = None) -> str:
     rendered = template.replace("__FORGEPY_PYTHON_VERSION__", python_version)
+    if inputs:
+        # Disabled standard features become pipeline inputs so CI doesn't run what the project doesn't have
+        lines = "".join(f"      {key}: {str(value).lower()}\n" for key, value in inputs.items())
+        rendered = rendered.replace("    with:\n", "    with:\n" + lines, 1)
     if docker:
         # Docker is a separate job rather than part of the shared pipelines so projects without it
         # don't carry a permanently skipped job; it runs after the pipeline and pushes on release.
