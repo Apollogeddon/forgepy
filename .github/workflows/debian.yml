@@ -3,6 +3,11 @@ name: Python Debian
 on:
   workflow_call:
     inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
       enable_secrets:
         required: false
         type: boolean
@@ -37,6 +42,8 @@ on:
 jobs:
   auto-merge:
     uses: ./.github/workflows/merge.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
     needs: [testing]
     permissions:
       contents: write
@@ -45,6 +52,7 @@ jobs:
   testing:
     uses: ./.github/workflows/testing.yml
     with:
+      runs_on: ${{ inputs.runs_on }}
       working_directory: ${{ inputs.working_directory }}
       python_version: ${{ inputs.python_version }}
       enable_secrets: ${{ inputs.enable_secrets }}
@@ -55,9 +63,11 @@ jobs:
     uses: ./.github/workflows/version.yml
     needs: [testing]
     with:
+      runs_on: ${{ inputs.runs_on }}
       working_directory: ${{ inputs.working_directory }}
 
   build-deb:
+    # A container job, which self-hosted runners without a Docker daemon can't run.
     runs-on: ubuntu-latest
     # Build inside an actual Debian container so the venv is built against the same
     # apt-provided /usr/bin/python3 that `depends: python3 (>= X.Y)` guarantees on

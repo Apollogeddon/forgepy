@@ -3,6 +3,11 @@ name: Python Quality
 on:
   workflow_call:
     inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
       working_directory:
         required: false
         type: string
@@ -18,7 +23,7 @@ on:
 
 jobs:
   secure:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
     defaults:
       run:
@@ -40,7 +45,7 @@ jobs:
           rm osv-scanner
 
   linting:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
     defaults:
       run:
