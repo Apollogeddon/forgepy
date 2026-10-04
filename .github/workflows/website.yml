@@ -8,6 +8,16 @@ on:
         required: false
         type: string
         default: 'ubuntu-latest'
+      test_on_push:
+        description: "Run the checks on pushes too; false runs them on pull requests (and scheduled runs) only"
+        required: false
+        type: boolean
+        default: true
+      test_release_prs:
+        description: "Run the checks on release-please's release pull requests"
+        required: false
+        type: boolean
+        default: true
       enable_secrets:
         required: false
         type: boolean
@@ -53,6 +63,11 @@ on:
 
 jobs:
   testing:
+    # With test_on_push false, a push checks only when a release is made, in release-testing.
+    # Without versioning every push deploys, and only these checks build what it deploys, so they always run.
+    if: >-
+      (github.event_name != 'push' || inputs.test_on_push || !inputs.enable_versioning) &&
+      (inputs.test_release_prs || !startsWith(github.head_ref, 'release-please--'))
     uses: ./.github/workflows/testing.yml
     with:
       runs_on: ${{ inputs.runs_on }}
@@ -74,21 +89,38 @@ jobs:
       pull-requests: write
 
   version:
-    if: inputs.enable_versioning
+    # Runs when the checks were skipped, as on a push to main with test_on_push false, but not when they failed.
+    if: ${{ !failure() && !cancelled() && inputs.enable_versioning }}
     uses: ./.github/workflows/version.yml
     needs: [testing]
     with:
       runs_on: ${{ inputs.runs_on }}
       working_directory: ${{ inputs.working_directory }}
 
+  release-testing:
+    # With test_on_push false, a push to main is checked and built only when release-please made a release.
+    needs: [version]
+    if: >-
+      !cancelled() && github.event_name == 'push' && !inputs.test_on_push &&
+      (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
+    uses: ./.github/workflows/testing.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
+      working_directory: ${{ inputs.working_directory }}
+      python_version: ${{ inputs.python_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+      artifact_name: ${{ inputs.artifact_name }}
+      build_command: ${{ inputs.build_command }}
+      run_tests: ${{ inputs.run_tests }}
+
   deploy:
     runs-on: ${{ inputs.runs_on }}
-    needs: [testing, version]
-    # always() so a skipped version job (enable_versioning: false) doesn't skip the deploy
+    needs: [testing, version, release-testing]
+    # !failure() rather than success(), so a skipped version or checks job doesn't skip the deploy
     if: |
-      always() &&
+      !failure() && !cancelled() &&
       github.ref == 'refs/heads/main' &&
-      needs.testing.result == 'success' &&
+      (needs.testing.result == 'success' || needs['release-testing'].result == 'success') &&
       (needs.version.result == 'success' || needs.version.result == 'skipped') &&
       (!inputs.enable_versioning || needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
     environment:
