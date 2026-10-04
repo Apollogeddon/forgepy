@@ -21,7 +21,7 @@ Dependabot pull requests are auto-merged by `merge.yml` once testing passes.
 
 Every workflow takes a `runs_on` input, default `ubuntu-latest`, and passes it down to each workflow it calls, so every job runs on that runner label. Set it per repository to use self-hosted runners, e.g. from a repository variable: `runs_on: ${{ vars.RUNS_ON || 'ubuntu-latest' }}`.
 
-`docker.yml`'s per-platform builds keep picking their own GitHub-hosted runners, as they need native Arm machines, and `debian.yml`'s `build-deb` stays on `ubuntu-latest`, as it builds inside a Debian container.
+`docker.yml`'s per-platform builds and its manifest merge always use GitHub-hosted runners: the builds because they need native Arm machines, the merge because it needs a Docker daemon. `debian.yml`'s `build-deb` stays on `ubuntu-latest` too, as it builds inside a Debian container.
 
 ## quality.yml
 

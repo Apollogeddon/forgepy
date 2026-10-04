@@ -126,7 +126,8 @@ jobs:
   merge:
     if: inputs.push
     needs: [prepare, build]
-    runs-on: ${{ inputs.runs_on }}
+    # Needs a Docker daemon (docker login, buildx's default driver), which self-hosted runners don't have.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Download digests
