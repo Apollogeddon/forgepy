@@ -23,6 +23,41 @@ Every workflow takes a `runs_on` input, default `ubuntu-latest`, and passes it d
 
 `docker.yml`'s per-platform builds and its manifest merge always use GitHub-hosted runners: the builds because they need native Arm machines, the merge because it needs a Docker daemon. `debian.yml`'s `build-deb` stays on `ubuntu-latest` too, as it builds inside a Debian container.
 
+## Checking once per change
+
+By default the checks run on every push and pull request, so a change is checked on its PR, again on `main`, and again around its release. To check each change only on its pull request:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 1'   # weekly: a full check of main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  service:
+    uses: apollogeddon/forgejs/.github/workflows/service.yml@main
+    with:
+      test_on_push: false        # pushes to main only run release-please
+      # test_release_prs: false  # also skip release-please's release PRs
+```
+
+- Pull requests run the full checks. A newer push cancels the run it replaces, and `main`'s own runs are never cancelled.
+- Pushes to `main` run only release-please and anything after it.
+- Release PRs run the checks unless `test_release_prs` is `false`. When they do run, they're the one place every change since the last release is checked together.
+- Skipped jobs count as passed for required status checks.
+- With `test_on_push: false`, turn off **Require branches to be up to date before merging**. Otherwise every PR is checked again before merge.
+
+`library.yml`, `debian.yml` and `website.yml` take `test_on_push` too. There, a push to `main` runs release-please first, and only when it makes a release does it run the checks, the build, and the publish, package or deploy that ships what they built. A `website.yml` caller with `enable_versioning: false` deploys every push, so its pushes are always checked.
+
+In that mode release-please tags the release before the push's checks run. If they fail, the tag and the GitHub release exist with nothing published, and need putting right by hand. So with these three, keep `test_release_prs: true`: the release PR is then checked with exactly what its merge ships.
+
 ## quality.yml
 
 *Security and static analysis.*

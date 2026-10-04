@@ -8,6 +8,16 @@ on:
         required: false
         type: string
         default: 'ubuntu-latest'
+      test_on_push:
+        description: "Run the checks on pushes too; false runs them on pull requests (and scheduled runs) only"
+        required: false
+        type: boolean
+        default: true
+      test_release_prs:
+        description: "Run the checks on release-please's release pull requests"
+        required: false
+        type: boolean
+        default: true
       enable_secrets:
         required: false
         type: boolean
@@ -50,6 +60,10 @@ jobs:
       pull-requests: write
 
   testing:
+    # With test_on_push false, a push checks only when a release is made, in release-testing.
+    if: >-
+      (github.event_name != 'push' || inputs.test_on_push) &&
+      (inputs.test_release_prs || !startsWith(github.head_ref, 'release-please--'))
     uses: ./.github/workflows/testing.yml
     with:
       runs_on: ${{ inputs.runs_on }}
@@ -59,12 +73,27 @@ jobs:
       run_tests: ${{ inputs.run_tests }}
 
   version:
-    if: inputs.enable_versioning
+    # Runs when the checks were skipped, as on a push to main with test_on_push false, but not when they failed.
+    if: ${{ !failure() && !cancelled() && inputs.enable_versioning }}
     uses: ./.github/workflows/version.yml
     needs: [testing]
     with:
       runs_on: ${{ inputs.runs_on }}
       working_directory: ${{ inputs.working_directory }}
+
+  release-testing:
+    # With test_on_push false, a push to main is checked and built only when release-please made a release.
+    needs: [version]
+    if: >-
+      !cancelled() && github.event_name == 'push' && !inputs.test_on_push &&
+      (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
+    uses: ./.github/workflows/testing.yml
+    with:
+      runs_on: ${{ inputs.runs_on }}
+      working_directory: ${{ inputs.working_directory }}
+      python_version: ${{ inputs.python_version }}
+      enable_secrets: ${{ inputs.enable_secrets }}
+      run_tests: ${{ inputs.run_tests }}
 
   build-deb:
     # A container job, which self-hosted runners without a Docker daemon can't run.
@@ -75,8 +104,8 @@ jobs:
     # managed download) lives at a path no .deb dependency can promise exists there.
     container: debian:bookworm-slim
     timeout-minutes: 10
-    needs: [version]
-    if: github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
+    needs: [testing, version, release-testing]
+    if: ${{ !failure() && !cancelled() && (needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) }}
     permissions:
       contents: read
     defaults:
