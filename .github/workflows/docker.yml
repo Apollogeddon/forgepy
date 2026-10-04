@@ -3,6 +3,11 @@ name: Docker Image
 on:
   workflow_call:
     inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
       platforms:
         description: "Comma-separated target platforms, e.g. linux/amd64,linux/arm64,linux/arm/v7"
         required: false
@@ -37,7 +42,7 @@ on:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -121,7 +126,7 @@ jobs:
   merge:
     if: inputs.push
     needs: [prepare, build]
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
     steps:
       - name: Download digests

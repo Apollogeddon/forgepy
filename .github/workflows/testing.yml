@@ -3,6 +3,11 @@ name: Python Tests
 on:
   workflow_call:
     inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
       working_directory:
         required: false
         type: string
@@ -32,12 +37,13 @@ jobs:
   quality:
     uses: ./.github/workflows/quality.yml
     with:
+      runs_on: ${{ inputs.runs_on }}
       working_directory: ${{ inputs.working_directory }}
       python_version: ${{ inputs.python_version }}
       enable_secrets: ${{ inputs.enable_secrets }}
 
   testing:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
     needs: [quality]
     defaults:
@@ -67,7 +73,7 @@ jobs:
           if-no-files-found: ignore
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
     needs: [quality, testing]
     defaults:
