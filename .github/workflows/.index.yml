@@ -18,6 +18,8 @@ jobs:
   index:
     uses: ./.github/workflows/library.yml
     with:
+      # The self-hosted `xerus` runners; a public repository never uses them.
+      runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
       python_version: '3.13'
       working_directory: '.'
       publish: false
