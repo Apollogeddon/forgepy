@@ -1,6 +1,6 @@
 [project]
 name = "forgepy"
-version = "0.1.0"
+version = "0.2.0"
 description = "Scaffolds best-practice tooling into Python projects: linting, type-checking, testing, CI/CD, Docker, and Debian packaging"
 readme = "README.md"
 authors = [
