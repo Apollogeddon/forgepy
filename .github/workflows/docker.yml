@@ -37,6 +37,11 @@ on:
         required: false
         type: boolean
         default: true
+      buildkit_endpoint:
+        description: "A remote BuildKit (e.g. tcp://runner.builder:1234) that builds every platform in one job on runs_on, emulating the ones it can't run natively; empty keeps the per-platform jobs"
+        required: false
+        type: string
+        default: ''
 
 # Jobs inherit the calling job's token, which needs packages: write to push.
 
@@ -76,6 +81,7 @@ jobs:
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   build:
+    if: inputs.buildkit_endpoint == ''
     needs: [prepare]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
@@ -124,7 +130,7 @@ jobs:
           retention-days: 1
 
   merge:
-    if: inputs.push
+    if: inputs.push && inputs.buildkit_endpoint == ''
     needs: [prepare, build]
     # Needs a Docker daemon (docker login, buildx's default driver), which self-hosted runners don't have.
     runs-on: ubuntu-latest
@@ -166,3 +172,72 @@ jobs:
           IMAGE: ${{ needs.prepare.outputs.image }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: docker buildx imagetools inspect "$IMAGE:$VERSION"
+
+  # One job for every platform on a remote BuildKit, which pushes the tagged multi-platform image itself, so neither
+  # QEMU set-up nor the merge job's Docker daemon is needed; the BuildKit host must have emulators for foreign platforms.
+  build-remote:
+    if: inputs.buildkit_endpoint != ''
+    needs: [prepare]
+    runs-on: ${{ inputs.runs_on }}
+    # Emulated platforms build several times slower than native ones.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      # There's no Docker daemon for docker login, so write the credentials buildx reads instead.
+      - name: Registry credentials
+        if: inputs.push
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          mkdir -p ~/.docker
+          printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$(printf '%s:%s' "$ACTOR" "$TOKEN" | base64 -w0)" > ~/.docker/config.json
+
+      - name: Use the remote BuildKit
+        env:
+          ENDPOINT: ${{ inputs.buildkit_endpoint }}
+        run: docker buildx create --name forgepy --driver remote "$ENDPOINT" --use
+
+      - name: Compute tags
+        if: inputs.push
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.prepare.outputs.image }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ inputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
+            type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
+            type=sha
+            type=raw,value=latest
+
+      # A shared BuildKit's cache could hold layers another repository's job planted, so pushed images build without it.
+      - name: Build
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+          PUSH: ${{ inputs.push }}
+        run: |
+          args=(--platform "$PLATFORMS")
+          if [ "$PUSH" = "true" ]; then
+            mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+            for tag in "${tags[@]}"; do args+=(--tag "$tag"); done
+            args+=(--push --no-cache --provenance mode=max --sbom true)
+          else
+            args+=(--output type=cacheonly)
+          fi
+          docker buildx build "${args[@]}" .
+
+      - name: Inspect image
+        if: inputs.push
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: docker buildx imagetools inspect "$IMAGE:$VERSION"
+
+      - name: Forget the credentials
+        if: always()
+        run: |
+          rm -f ~/.docker/config.json
+          docker buildx rm forgepy || true
