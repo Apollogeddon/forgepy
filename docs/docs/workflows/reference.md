@@ -21,7 +21,7 @@ Dependabot pull requests are auto-merged by `merge.yml` once testing passes.
 
 Every workflow takes a `runs_on` input, default `ubuntu-latest`, and passes it down to each workflow it calls, so every job runs on that runner label. Set it per repository to use self-hosted runners, e.g. from a repository variable: `runs_on: ${{ vars.RUNS_ON || 'ubuntu-latest' }}`.
 
-`docker.yml`'s per-platform builds and its manifest merge always use GitHub-hosted runners: the builds because they need native Arm machines, the merge because it needs a Docker daemon. `debian.yml`'s `build-deb` stays on `ubuntu-latest` too, as it builds inside a Debian container.
+`docker.yml`'s per-platform builds and its manifest merge use GitHub-hosted runners: the builds because they need native Arm machines, the merge because it needs a Docker daemon. With `buildkit_endpoint` set, it builds every platform in one job on `runs_on` instead, against a remote BuildKit, so self-hosted runners without a Docker daemon can build and push multi-platform images. `debian.yml`'s `build-deb` stays on `ubuntu-latest` too, as it builds inside a Debian container.
 
 ## Checking once per change
 
@@ -132,12 +132,15 @@ Configure the trusted publisher on your PyPI project's settings page first.
 2. **`build`** — Builds each platform on its own runner. `linux/amd64` and `linux/arm64` build natively (`ubuntu-24.04-arm`); every other platform is emulated with QEMU. On pull requests the image is built but not pushed, so a broken Dockerfile fails the PR's checks. Make the `docker` job a required status check to stop Dependabot auto-merge on a failing build.
 3. **`merge`** — On a new release, combines the per-platform images into one multi-platform manifest tagged `X.Y.Z`, `X.Y`, `X`, `sha-<commit>` and `latest`, with provenance and SBOM attestations. *(Needs: build)*
 
+With `buildkit_endpoint` set, **`build-remote`** replaces `build` and `merge`: one job on `runs_on` builds every platform on that BuildKit, emulating the ones its host can't run natively, and on a release pushes the same tags and attestations itself. The BuildKit host needs QEMU registered for foreign platforms (`binfmt_misc`), and its emulated builds run several times slower than native ones. Pushed images build without the cache, as a shared BuildKit's cache could hold layers another repository's job planted.
+
 | Input | Default | Purpose |
 | :--- | :--- | :--- |
 | `push` | `false` | Push to GHCR; the generated job sets it for a new release on `main` |
 | `version` | `''` | Release version used for the semver tags |
 | `image` | `ghcr.io/<owner>/<repo>` | Image name override |
 | `platforms` | `linux/amd64,linux/arm64` | Comma-separated platforms, e.g. `linux/amd64,linux/arm64,linux/arm/v7` |
+| `buildkit_endpoint` | `''` | A remote BuildKit, e.g. `tcp://runner.builder:1234`, to build every platform in one job on `runs_on` |
 | `native_arm` | `true` | Build arm64 on native Arm runners; set `false` to emulate (e.g. if Arm runners aren't available to a private repo) |
 
 The website Dockerfile builds the static site once on the build host and only the nginx stage per target platform. The backend builds entirely per target, because the virtual environment holds platform-specific wheels. Supported platforms follow the base images:
