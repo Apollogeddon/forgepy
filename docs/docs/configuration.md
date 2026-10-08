@@ -117,7 +117,7 @@ Backends and libraries use the `uv_build` backend. Backends and websites are mar
     ".": {
       "release-type": "python",
       "extra-files": [
-        { "type": "toml", "path": "uv.lock", "jsonpath": "$.package[?(@.name=='my-project')].version" }
+        { "type": "toml", "path": "uv.lock", "jsonpath": "$.package[?(@.name.value=='my-project')].version" }
       ]
     }
   }

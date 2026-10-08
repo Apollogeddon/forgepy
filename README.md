@@ -1,6 +1,6 @@
 <br />
 <div align="center">
-  <a href="https://github.com/Apollogeddon/forgepy">
+  <a href="https://apollogeddon.github.io/forgepy/">
     <img src="docs/docs/assets/forgepy.svg" alt="Logo" width="100" height="100">
   </a>
 
