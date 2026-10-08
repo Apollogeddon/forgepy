@@ -15,7 +15,8 @@ class VersioningFeature(Feature):
         return cfg.versioning
 
     def apply(self, ctx: FeatureContext) -> bool:
-        project_name = pj.project_name(ctx.pyproject, ctx.cwd)
+        # uv.lock records the PEP 503 normalized name, e.g. My_Project as my-project
+        project_name = pj.normalize_project_name(pj.project_name(ctx.pyproject, ctx.cwd))
 
         manifest = {".": "0.1.0"}
         config = {
@@ -23,10 +24,11 @@ class VersioningFeature(Feature):
                 ".": {
                     "release-type": "python",
                     "extra-files": [
+                        # release-please's TOML parser wraps each value, so the filter matches on name.value
                         {
                             "type": "toml",
                             "path": "uv.lock",
-                            "jsonpath": f"$.package[?(@.name=='{project_name}')].version",
+                            "jsonpath": f"$.package[?(@.name.value=='{project_name}')].version",
                         }
                     ],
                 }

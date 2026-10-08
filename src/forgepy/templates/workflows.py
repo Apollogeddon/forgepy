@@ -14,16 +14,22 @@ on:
   pull_request:
     branches: ["main"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # never cancel a run on main mid-release, or the release is created but never published
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   library:
     uses: apollogeddon/forgepy/.github/workflows/library.yml@main
     permissions:
       contents: write
       pull-requests: write
+      # PyPI trusted publishing (OIDC)
       id-token: write
     with:
       python_version: '__FORGEPY_PYTHON_VERSION__'
-    secrets: inherit
+      auto_patch: true
 """
 
 SERVICE_WORKFLOW = """\
@@ -35,6 +41,11 @@ on:
   pull_request:
     branches: ["main"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # never cancel a run on main mid-release, or the release is created but never published
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   service:
     uses: apollogeddon/forgepy/.github/workflows/service.yml@main
@@ -43,7 +54,7 @@ jobs:
       pull-requests: write
     with:
       python_version: '__FORGEPY_PYTHON_VERSION__'
-    secrets: inherit
+      auto_patch: true
 """
 
 
@@ -56,6 +67,11 @@ on:
   pull_request:
     branches: ["main"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # never cancel a run on main mid-release, or the release is created but never published
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   website:
     uses: apollogeddon/forgepy/.github/workflows/website.yml@main
@@ -66,7 +82,7 @@ jobs:
       pull-requests: write
     with:
       python_version: '__FORGEPY_PYTHON_VERSION__'
-    secrets: inherit
+      auto_patch: true
 """
 
 DEBIAN_WORKFLOW = """\
@@ -78,6 +94,11 @@ on:
   pull_request:
     branches: ["main"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # never cancel a run on main mid-release, or the release is created but never published
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   debian:
     uses: apollogeddon/forgepy/.github/workflows/debian.yml@main
@@ -86,7 +107,7 @@ jobs:
       pull-requests: write
     with:
       python_version: '__FORGEPY_PYTHON_VERSION__'
-    secrets: inherit
+      auto_patch: true
 """
 
 
@@ -100,7 +121,6 @@ DOCKER_JOB = """
     with:
       push: ${{ github.ref == 'refs/heads/main' && needs.__FORGEPY_PIPELINE__.outputs.new_release_published == 'true' }}
       version: ${{ needs.__FORGEPY_PIPELINE__.outputs.version }}
-    secrets: inherit
 """
 
 
