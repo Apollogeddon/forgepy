@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.0](https://github.com/Apollogeddon/forgepy/compare/v0.2.0...v0.3.0) (2026-10-08)
+
+
+### Features
+
+* **ci:** upgrade packages with known vulnerabilities on main, as forgejs's auto_patch does ([8e3efaf](https://github.com/Apollogeddon/forgepy/commit/8e3efaf78bd5dfbf7b2ffd94ff0f704662d2bd6b))
+
+
+### Bug Fixes
+
+* bump forgepy's version in the docs lock on release too ([e1b3557](https://github.com/Apollogeddon/forgepy/commit/e1b35575e441b46ef044b07b06ea503d1ba1c4cc))
+* bump the version in uv.lock on release, which release-please never matched ([eac7010](https://github.com/Apollogeddon/forgepy/commit/eac7010e1679fc27bf75f92d6e13923a8297aedc))
+* **ci:** add timeouts to the release-please and pages deploy jobs ([e6f8da3](https://github.com/Apollogeddon/forgepy/commit/e6f8da3f9b8dac6414701333e8ceb777867230ac))
+* **ci:** don't leave the token in .git/config for jobs that never push ([793eae0](https://github.com/Apollogeddon/forgepy/commit/793eae08205ec8746d7edc63a4e5430a765308d4))
+* **ci:** harden the reusable workflows and the generated ci ([327e98a](https://github.com/Apollogeddon/forgepy/commit/327e98a392ba2f2e16ec9977788b6899a0e9e0cc))
+* **deps:** bump the dependencies group across 1 directory with 2 updates ([5032674](https://github.com/Apollogeddon/forgepy/commit/5032674c293d8cb14834ed7137adb8ee66e7fcdf))
+* **deps:** bump the dependencies group across 1 directory with 2 updates ([797e472](https://github.com/Apollogeddon/forgepy/commit/797e4720953c91c407812edb54800ed49c563f83))
+* generate ci with a concurrency rule and without secrets: inherit ([91060d6](https://github.com/Apollogeddon/forgepy/commit/91060d6303bb4c8f1cfd2fe42bac1914db3b6447))
+
+
+### Documentation
+
+* fix the test_on_push example and say what --website scaffolds ([d277e2e](https://github.com/Apollogeddon/forgepy/commit/d277e2e9f2d774112f8b3268d598fa54d7358c0b))
+* link the README logo to the docs site ([6ce6cc5](https://github.com/Apollogeddon/forgepy/commit/6ce6cc5901eb89eb96c03988a0cdc88eb16bf8cc))
+* link the README logo to the docs site ([af4b426](https://github.com/Apollogeddon/forgepy/commit/af4b426d437642da1a456784deb286dc7041c1d6))
+* point the test_on_push example at forgepy's own service workflow ([c2c7f22](https://github.com/Apollogeddon/forgepy/commit/c2c7f22f88f5edf52b03928379cf85e2af91b0af))
+* say that --website is a documentation site, not a frontend app ([f3e5b93](https://github.com/Apollogeddon/forgepy/commit/f3e5b931fd274f73f99b0b96a8be1f3e90336334))
+
 ## [0.2.0](https://github.com/Apollogeddon/forgepy/compare/v0.1.0...v0.2.0) (2026-10-05)
 
 
