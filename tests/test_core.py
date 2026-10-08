@@ -265,3 +265,15 @@ def test_pyrightconfig_include_has_both_for_default_backend():
     init(InitConfig(target=PROJECT), fs)
     content = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
     assert {"src", "tests"} <= set(content["include"])
+
+
+def test_init_release_config_bumps_the_normalized_name_in_uv_lock():
+    fs = MemoryFileSystem()
+    fs.write_text(PROJECT / "pyproject.toml", '[project]\nname = "My_Project"\n')
+    init(InitConfig(target=PROJECT), fs)
+    config = json.loads(fs.read_text(PROJECT / ".github/release.json"))
+    [extra] = config["packages"]["."]["extra-files"]
+    assert extra["path"] == "uv.lock"
+    # release-please's TOML parser wraps each value, and uv.lock records the PEP 503 normalized name;
+    # with @.name=='...' or the declared name, release-please matches nothing and the lock never moves
+    assert extra["jsonpath"] == "$.package[?(@.name.value=='my-project')].version"
