@@ -102,6 +102,8 @@ forgepy sync [--check]
 | `--python VERSION` | Target Python version (default: `3.13`). |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
+`--website` scaffolds a static documentation site. There is no frontend application mode.
+
 `--no-testing` and `--no-versioning` also switch off the matching step in the generated CI workflow.
 
 `forgepy sync` refreshes the managed base configs under `.forgepy/` — see [Configuration](configuration.md#managed-configs).
