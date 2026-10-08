@@ -94,8 +94,9 @@ jobs:
     uses: apollogeddon/forgepy/.github/workflows/testing.yml@main
     with:
       python_version: ${{ matrix.python }}
-      # artifact names must be unique per run
+      # artifact names must be unique per run, and security patching should only run once
       artifact_name: dist-py${{ matrix.python }}
+      auto_patch: false
 ```
 
 ### Custom Build Steps
