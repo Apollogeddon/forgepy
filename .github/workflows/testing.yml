@@ -49,6 +49,7 @@ jobs:
 
   testing:
     runs-on: ${{ inputs.runs_on }}
+    if: inputs.run_tests
     timeout-minutes: 10
     needs: [quality]
     defaults:
@@ -67,7 +68,6 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
       - name: Tests
-        if: inputs.run_tests
         run: uv run pytest
       - name: Upload Coverage
         if: always()
@@ -82,7 +82,8 @@ jobs:
   build:
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
-    needs: [quality, testing]
+    # only needs the checks to pass, so it runs alongside the tests
+    needs: [quality]
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}
@@ -107,7 +108,7 @@ jobs:
           path: ${{ inputs.working_directory }}/dist
 
   patch:
-    if: inputs.auto_patch && github.ref == 'refs/heads/main'
+    if: ${{ !failure() && !cancelled() && inputs.auto_patch && github.ref == 'refs/heads/main' }}
     needs: [quality, testing, build]
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
