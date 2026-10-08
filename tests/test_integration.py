@@ -101,6 +101,22 @@ def test_website_scaffold_passes_its_own_toolchain(tmp_path: Path):
     _run(["uv", "run", "poe", "sync-check"], cwd=project)
 
 
+def test_jython_scaffold_passes_its_own_toolchain(tmp_path: Path):
+    project = _scaffold(tmp_path, "--jython")
+    _run(["uv", "run", "poe", "lint"], cwd=project)
+    _run(["uv", "run", "poe", "type"], cwd=project)
+    _run(["uv", "run", "poe", "compat"], cwd=project)
+    _run(["uv", "run", "poe", "test"], cwd=project)
+    _run(["uv", "run", "poe", "sync-check"], cwd=project)
+
+
+def test_jython_compat_rejects_python_3_syntax(tmp_path: Path):
+    project = _scaffold(tmp_path, "--jython")
+    (project / "src" / "modern.py").write_text('def greet(name):\n    return f"Hello, {name}!"\n', encoding="utf-8")
+    result = subprocess.run(["uv", "run", "poe", "compat"], cwd=project, capture_output=True, check=False)
+    assert result.returncode != 0
+
+
 def test_backend_no_testing_scaffold_passes_its_own_toolchain(tmp_path: Path):
     """Regression: pyrightconfig.json used to hardcode "include": ["src", "tests"],
     crashing basedpyright when --no-testing skipped creating tests/."""

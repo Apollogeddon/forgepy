@@ -9,11 +9,17 @@ MANAGED_CONFIGS: dict[str, str] = {
     ".forgepy/ruff.toml": "ruff.toml",
     ".forgepy/pyrightconfig.json": "pyrightconfig.json",
 }
+# Managed only in projects that have them, e.g. ones scaffolded with --jython
+OPTIONAL_CONFIGS: dict[str, str] = {
+    ".forgepy/ruff-jython.toml": "ruff-jython.toml",
+}
 
 
 def sync(cwd: Path, *, check: bool = False, fs: FileSystem | None = None) -> int:
     fs = fs or LocalFileSystem()
-    contents = {rel_path: templates.load_config(name) for rel_path, name in MANAGED_CONFIGS.items()}
+    present = {rel_path: name for rel_path, name in OPTIONAL_CONFIGS.items() if fs.exists(cwd / rel_path)}
+    managed = MANAGED_CONFIGS | present
+    contents = {rel_path: templates.load_config(name) for rel_path, name in managed.items()}
 
     drifted = [
         rel_path

@@ -33,8 +33,15 @@ class InitConfig:
     versioning: bool = True
     docker: bool = False
     debian: bool = False
+    # the code runs on Jython 2.7: uv installs only the dev tools, and the checks keep it Python 2 compatible
+    jython: bool = False
     python_version: str = "3.13"
     target: Path = field(default_factory=Path.cwd)
+
+    @property
+    def packaged(self) -> bool:
+        """Whether uv builds and installs the project itself, which needs a module under src/."""
+        return not (self.mode.is_website or self.jython)
 
     def validate(self) -> list[str]:
         errors: list[str] = []
@@ -42,4 +49,10 @@ class InitConfig:
             errors.append("--docker is not available in library mode")
         if self.debian and not self.mode.is_backend:
             errors.append("--debian is only available in backend mode")
+        if self.jython and not self.mode.is_backend:
+            errors.append("--jython is only available in backend mode")
+        if self.jython and not self.linting:
+            errors.append("--jython needs linting: its Python 2 checks are part of it")
+        if self.jython and (self.docker or self.debian):
+            errors.append("--jython can't be combined with --docker or --debian")
         return errors

@@ -24,6 +24,16 @@ on:
         required: false
         type: boolean
         default: true
+      run_build:
+        description: "Run the build job; false for a project with nothing to build"
+        required: false
+        type: boolean
+        default: true
+      sync_args:
+        description: "Extra arguments for uv sync, e.g. --group to pick a dependency group"
+        required: false
+        type: string
+        default: ''
       auto_patch:
         description: "On main, upgrade packages with known vulnerabilities in uv.lock and commit the result"
         required: false
@@ -46,6 +56,7 @@ jobs:
       working_directory: ${{ inputs.working_directory }}
       python_version: ${{ inputs.python_version }}
       enable_secrets: ${{ inputs.enable_secrets }}
+      sync_args: ${{ inputs.sync_args }}
 
   testing:
     runs-on: ${{ inputs.runs_on }}
@@ -66,7 +77,10 @@ jobs:
         with:
           python-version: ${{ inputs.python_version }}
       - name: Install dependencies
-        run: uv sync --locked
+        # unquoted on purpose: it can hold several arguments
+        run: uv sync --locked $SYNC_ARGS
+        env:
+          SYNC_ARGS: ${{ inputs.sync_args }}
       - name: Tests
         run: uv run pytest
       - name: Upload Coverage
@@ -81,6 +95,7 @@ jobs:
 
   build:
     runs-on: ${{ inputs.runs_on }}
+    if: inputs.run_build
     timeout-minutes: 10
     # only needs the checks to pass, so it runs alongside the tests
     needs: [quality]
@@ -98,7 +113,10 @@ jobs:
         with:
           python-version: ${{ inputs.python_version }}
       - name: Install dependencies
-        run: uv sync --locked
+        # unquoted on purpose: it can hold several arguments
+        run: uv sync --locked $SYNC_ARGS
+        env:
+          SYNC_ARGS: ${{ inputs.sync_args }}
       - name: Build
         run: ${{ inputs.build_command }}
       - name: Upload Build Artifact

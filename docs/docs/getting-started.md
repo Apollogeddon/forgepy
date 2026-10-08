@@ -68,8 +68,9 @@ Forge.py adds [poethepoet](https://poethepoet.natn.io/) tasks to `[tool.poe.task
 | `security` | `osv-scanner scan -r .` | linting on |
 | `hooks` | `pre-commit install` | linting on |
 | `sync-check` | `forgepy sync --check` | linting on |
+| `compat` | `vermin --target=2.7- ... src && forgepy check-jython src`: fails on syntax or modules Jython 2.7 lacks | `--jython` |
 | `test` | `pytest` | testing on |
-| `build` | `uv build` (`zensical build` for websites) | always |
+| `build` | `uv build` (`zensical build` for websites) | not `--jython` |
 | `start` | `python -m <package>` | `--backend` |
 | `watch` | `watchmedo auto-restart -- python -m <package>` | `--backend` |
 | `check-dist` | `validate-pyproject pyproject.toml` | `--library` |
@@ -84,6 +85,7 @@ Existing tasks with the same name are kept unless you pass `--force`.
 ```text
 forgepy init [options]
 forgepy sync [--check]
+forgepy check-jython PATH...
 ```
 
 | Option | Description |
@@ -97,6 +99,7 @@ forgepy sync [--check]
 | `--all` / `--no-all` | Enable or disable every standard feature at once; an explicit flag such as `--testing` still wins. |
 | `--docker` | Add a `Dockerfile` and container CI (not available for `--library`). |
 | `--debian` | Add nfpm-based `.deb` packaging (`--backend` only). |
+| `--jython` | Scripts that run on Jython 2.7: no packaging, lint rules that keep Python 2 syntax, and a vermin compatibility check (`--backend` only; needs linting, and can't be combined with `--docker` or `--debian`). See [Jython projects](configuration.md#jython-projects). |
 | `--force` | Overwrite existing config files and tasks. |
 | `--dry-run` | Show what would change without writing anything. |
 | `--python VERSION` | Target Python version (default: `3.13`). |
@@ -106,7 +109,7 @@ forgepy sync [--check]
 
 `--no-testing` and `--no-versioning` also switch off the matching step in the generated CI workflow.
 
-`forgepy sync` refreshes the managed base configs under `.forgepy/` — see [Configuration](configuration.md#managed-configs).
+`forgepy sync` refreshes the managed base configs under `.forgepy/` — see [Configuration](configuration.md#managed-configs). `forgepy check-jython` is the part of a `--jython` project's `compat` task that vermin can't do — see [Jython projects](configuration.md#jython-projects).
 
 ## Project Structure
 
@@ -133,4 +136,4 @@ A default `forgepy init` (backend) produces:
 └── ruff.toml                   # extends .forgepy/ruff.toml
 ```
 
-`--library` omits `__main__.py`; `--website` replaces `src/` with `mkdocs.yml` and `docs/index.md`. `--docker` adds `Dockerfile` and `.dockerignore`, and `--debian` adds `nfpm.yaml` and a `packaging/` directory.
+`--library` omits `__main__.py`; `--website` replaces `src/` with `mkdocs.yml` and `docs/index.md`. `--docker` adds `Dockerfile` and `.dockerignore`, and `--debian` adds `nfpm.yaml` and a `packaging/` directory. `--jython` replaces `src/<package>/` with a starter `src/hello.py` and adds `.forgepy/ruff-jython.toml`.

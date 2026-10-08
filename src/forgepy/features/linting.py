@@ -41,7 +41,7 @@ repos:
         entry: uv run forgepy sync --check
         language: system
         pass_filenames: false
-{commitizen_hook}"""
+{vermin_hook}{commitizen_hook}"""
 
 COMMITIZEN_HOOK = """\
       - id: commitizen
@@ -50,6 +50,23 @@ COMMITIZEN_HOOK = """\
         language: system
         stages: [commit-msg]
 """
+
+VERMIN_HOOK = """\
+      - id: vermin
+        name: vermin (Jython 2.7 compatibility)
+        entry: uv run poe compat
+        language: system
+        files: ^src/
+        types: [python]
+        pass_filenames: false
+"""
+
+# vermin reads no pyproject.toml settings, so they live in the task. typing is excluded as the
+# scripts import it only under `if MYPY:`, for type comments; Jython never runs that import.
+# check-jython finds the commas after *args/**kwargs that ruff format adds and vermin can't see.
+COMPAT_TASK = (
+    "vermin --target=2.7- --violations --no-tips --eval-annotations --exclude typing src && forgepy check-jython src"
+)
 
 
 class LintingFeature(Feature):
@@ -61,13 +78,18 @@ class LintingFeature(Feature):
     def apply(self, ctx: FeatureContext) -> bool:
         ok = True
         ok &= write_managed(ctx, ".forgepy/ruff.toml", templates.load_config("ruff.toml"))
+        if ctx.cfg.jython:
+            # the Jython base sets its own target version, the oldest ruff supports
+            ok &= write_managed(ctx, ".forgepy/ruff-jython.toml", templates.load_config("ruff-jython.toml"))
+            ruff_base = 'extend = ".forgepy/ruff-jython.toml"\n'
+        else:
+            ruff_base = (
+                f'extend = ".forgepy/ruff.toml"\ntarget-version = "py{ctx.cfg.python_version.replace(".", "")}"\n'
+            )
         ok &= create_file(
             ctx,
             "ruff.toml",
-            f'extend = ".forgepy/ruff.toml"\n'
-            f'target-version = "py{ctx.cfg.python_version.replace(".", "")}"\n\n'
-            f"[lint.per-file-ignores]\n"
-            f'"tests/**" = ["S101", "S603", "S607"]\n',
+            f'{ruff_base}\n[lint.per-file-ignores]\n"tests/**" = ["S101", "S603", "S607"]\n',
         )
         ok &= write_managed(
             ctx,
@@ -81,19 +103,24 @@ class LintingFeature(Feature):
         if ctx.cfg.testing:
             include_paths.append("tests")
 
-        pyrightconfig = {
+        pyrightconfig: dict[str, object] = {
             "extends": ".forgepy/pyrightconfig.json",
             "include": include_paths,
             "venvPath": ".",
             "venv": ".venv",
         }
+        if ctx.cfg.jython:
+            # Python 2 code can only annotate with type comments, and imports their names under
+            # `if MYPY:`, which Jython skips but basedpyright follows
+            pyrightconfig["defineConstant"] = {"MYPY": True}
+            pyrightconfig["reportTypeCommentUsage"] = False
         ok &= create_file(ctx, "pyrightconfig.json", json.dumps(pyrightconfig, indent=2) + "\n")
 
         commitizen_hook = COMMITIZEN_HOOK if ctx.cfg.versioning else ""
         ok &= create_file(
             ctx,
             ".pre-commit-config.yaml",
-            PRECOMMIT_CONFIG.format(commitizen_hook=commitizen_hook),
+            PRECOMMIT_CONFIG.format(vermin_hook=VERMIN_HOOK if ctx.cfg.jython else "", commitizen_hook=commitizen_hook),
         )
 
         pj.set_shell_task(
@@ -106,10 +133,16 @@ class LintingFeature(Feature):
         pj.set_task(ctx.pyproject, "security", "osv-scanner scan -r .", force=ctx.cfg.force)
         pj.set_task(ctx.pyproject, "hooks", "pre-commit install", force=ctx.cfg.force)
         pj.set_task(ctx.pyproject, "sync-check", "forgepy sync --check", force=ctx.cfg.force)
+        if ctx.cfg.jython:
+            pj.ensure_dev_dependency(ctx.pyproject, "vermin>=1.8")
+            pj.set_shell_task(ctx.pyproject, "compat", COMPAT_TASK, force=ctx.cfg.force)
 
         return ok
 
     def cleanup(self, ctx: FeatureContext) -> None:
+        if not ctx.cfg.jython:
+            # CI runs the Jython check wherever this base exists
+            remove_file(ctx, ".forgepy/ruff-jython.toml")
         if ctx.cfg.linting:
             return
         remove_file(ctx, "ruff.toml")

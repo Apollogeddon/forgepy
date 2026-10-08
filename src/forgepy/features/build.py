@@ -16,6 +16,7 @@ class BuildFeature(Feature):
 
     def apply(self, ctx: FeatureContext) -> bool:
         force = ctx.cfg.force
+        pj.set_task(ctx.pyproject, "type", "basedpyright", force=force)
 
         if ctx.cfg.mode.is_website:
             project_name = pj.project_name(ctx.pyproject, ctx.cwd)
@@ -35,11 +36,12 @@ class BuildFeature(Feature):
             pj.ensure_dev_dependency(ctx.pyproject, "zensical>=0.0.66,<0.1")
             pj.set_task(ctx.pyproject, "dev", "zensical serve", force=force)
             pj.set_task(ctx.pyproject, "build", "zensical build", force=force)
-            pj.set_task(ctx.pyproject, "type", "basedpyright", force=force)
             return ok
+        if ctx.cfg.jython:
+            # nothing to build: the scripts are deployed as they are
+            return True
         package_name = pj.package_module_name(ctx.pyproject, ctx.cwd)
         pj.set_task(ctx.pyproject, "build", "uv build", force=force)
-        pj.set_task(ctx.pyproject, "type", "basedpyright", force=force)
         if ctx.cfg.mode.is_backend:
             pj.set_task(ctx.pyproject, "start", f"python -m {package_name}", force=force)
             pj.set_task(

@@ -304,3 +304,79 @@ def test_init_generates_least_privilege_ci_that_never_cancels_main(cfg: InitConf
     # every pipeline job upgrades vulnerable packages on main
     pipeline = next(job for name, job in workflow["jobs"].items() if name != "docker")
     assert pipeline["with"]["auto_patch"] is True
+
+
+def test_init_jython_installs_only_the_dev_tools():
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, jython=True), fs) == 0
+
+    doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
+    assert "build-system" not in doc
+    assert doc["tool"]["uv"]["package"] is False
+    assert "build" not in doc["tool"]["poe"]["tasks"]
+    assert "start" not in doc["tool"]["poe"]["tasks"]
+    assert fs.exists(PROJECT / "src/hello.py")
+    assert not fs.exists(PROJECT / "src/project/__init__.py")
+
+
+def test_init_jython_script_avoids_python_3_syntax():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, jython=True), fs)
+    script = fs.read_text(PROJECT / "src/hello.py")
+    assert "# type: (Optional[str]) -> str" in script
+    assert ".format(" in script
+    assert 'f"' not in script
+
+
+def test_init_jython_lints_against_the_jython_base():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, jython=True), fs)
+
+    ruff = fs.read_text(PROJECT / "ruff.toml")
+    assert ruff.startswith('extend = ".forgepy/ruff-jython.toml"\n')
+    assert "target-version" not in ruff
+    base = tomlkit.parse(fs.read_text(PROJECT / ".forgepy/ruff-jython.toml"))
+    assert base["extend"] == "ruff.toml"
+    assert {"UP", "PTH", "F401"} <= set(base["lint"]["ignore"])
+
+    pyright = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
+    assert pyright["defineConstant"] == {"MYPY": True}
+    assert pyright["reportTypeCommentUsage"] is False
+
+    assert 'pythonpath = ["src"]' in fs.read_text(PROJECT / "pytest.toml")
+
+
+def test_init_jython_checks_compatibility_with_vermin():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, jython=True), fs)
+
+    doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
+    assert any(str(dep).startswith("vermin") for dep in doc["dependency-groups"]["dev"])
+    compat = doc["tool"]["poe"]["tasks"]["compat"]["shell"]
+    assert "--target=2.7-" in compat
+    assert "forgepy check-jython src" in compat
+    hooks = yaml.safe_load(fs.read_text(PROJECT / ".pre-commit-config.yaml"))["repos"][0]["hooks"]
+    assert any(hook["id"] == "vermin" for hook in hooks)
+
+
+def test_init_jython_workflow_skips_the_build():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, jython=True), fs)
+    workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
+    assert workflow["jobs"]["service"]["with"]["run_build"] is False
+
+
+def test_init_without_jython_has_no_jython_files():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    assert not fs.exists(PROJECT / ".forgepy/ruff-jython.toml")
+    doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
+    assert "compat" not in doc["tool"]["poe"]["tasks"]
+    assert "defineConstant" not in json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
+
+
+def test_init_without_jython_removes_the_jython_base_with_force():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, jython=True), fs)
+    init(InitConfig(target=PROJECT, force=True), fs)
+    assert not fs.exists(PROJECT / ".forgepy/ruff-jython.toml")
