@@ -1,32 +1,52 @@
 ---
 title: Configuration
-description: Extend Forge.py tool configurations for project-specific overrides.
+description: What forgepy init generates, and how to override the Forge.py base configs in your project.
 ---
 
 # Configuration
 
-Forge.py uses a layered configuration model: each tool's project-level config extends a base config that Forge.py manages, so you override only what your project needs.
+This page describes each file `forgepy init` generates and how to override it. Forge.py uses a layered model: a project's Ruff and basedpyright configs extend base configs that Forge.py manages, so your project's files hold only what differs.
 
-## Managed Configs
+## Managed configs
 
-The Ruff and basedpyright base configs live in `.forgepy/` inside your project — a vendored snapshot of the configs bundled with the installed version of Forge.py. Pointing at a local copy (rather than a path inside the virtual environment) keeps the `extend` paths stable across platforms and Python versions.
+The Ruff and basedpyright base configs live in `.forgepy/` inside your project. They are a copy of the configs bundled with the installed version of Forge.py. Extending a local copy, rather than a path inside the virtual environment, keeps the `extend` paths the same on every platform and Python version.
 
 | File | Purpose |
 | :--- | :--- |
-| `.forgepy/ruff.toml` | Base Ruff rules. **Do not edit** — it is overwritten on refresh. |
-| `.forgepy/pyrightconfig.json` | Base basedpyright settings. **Do not edit.** |
+| `.forgepy/ruff.toml` | Base Ruff rules. Don't edit it: `forgepy sync` overwrites it. |
+| `.forgepy/pyrightconfig.json` | Base basedpyright settings. Don't edit it either. |
+| `.forgepy/ruff-jython.toml` | Base Ruff rules for [Jython projects](#jython-projects), only in projects that have it. |
 
-After upgrading Forge.py, refresh the snapshot:
+`init` always rewrites these files, with or without `--force`.
+
+## Dependencies
+
+`init` adds `forgepy[toolchain]` to the `dev` dependency group in `pyproject.toml`. The `toolchain` extra brings in Ruff, basedpyright, pytest, pytest-cov, Poe the Poet, pre-commit, Commitizen, watchdog and validate-pyproject, with minimum versions only; your `uv.lock` pins the exact versions. Websites also get Zensical, and `--jython` projects get vermin.
+
+As Forge.py isn't on PyPI, `init` also adds a `[tool.uv.sources]` entry that installs it from Git:
+
+```toml
+[tool.uv.sources]
+forgepy = { git = "https://github.com/apollogeddon/forgepy" }
+```
+
+An existing `forgepy` source, such as a local path, is never replaced, even with `--force`.
+
+## Upgrading
+
+To move a project to the latest Forge.py and refresh its managed configs:
 
 ```bash
+uv lock --upgrade-package forgepy
+uv sync
 uv run forgepy sync
 ```
 
-`forgepy sync --check` reports drift without writing anything and exits `1` if the snapshot is out of date. It is already wired into the generated pre-commit hook, the `sync-check` task and the CI quality job, so a stale snapshot can't slip through.
+`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and the CI quality job all run it, so a stale snapshot fails the checks.
 
-## Quality & Testing
+## Quality and testing
 
-### Ruff — Linting & Formatting
+### Ruff: linting and formatting
 
 The generated `ruff.toml` extends the managed base:
 
@@ -38,11 +58,11 @@ target-version = "py313"
 "tests/**" = ["S101", "S603", "S607"]
 ```
 
-The base enables a broad rule set — `E`, `F`, `W`, `I`, `UP`, `B`, `SIM`, `RUF`, `PL`, `N`, `A`, `C4`, `PTH`, `PERF`, `RET`, `ARG` and `S` (Bandit security checks) — with a 120-character line length and double quotes. Add project-specific settings below the `extend` line; they take precedence over the base.
+The base enables a broad rule set (`E`, `F`, `W`, `I`, `UP`, `B`, `SIM`, `RUF`, `PL`, `N`, `A`, `C4`, `PTH`, `PERF`, `RET`, `ARG` and `S` for Bandit security checks), with a 120-character line length and double quotes. Add project-specific settings below the `extend` line; they take precedence over the base.
 
-### basedpyright — Type Checking
+### basedpyright: type checking
 
-The generated `pyrightconfig.json` extends the managed base, which runs in **strict** mode and treats unused imports and variables as errors:
+The generated `pyrightconfig.json` extends the managed base, which runs in strict mode and treats unused imports and variables as errors:
 
 ```json
 {
@@ -53,9 +73,9 @@ The generated `pyrightconfig.json` extends the managed base, which runs in **str
 }
 ```
 
-`include` only lists directories that exist for your mode — websites have no `src`, and `--no-testing` drops `tests`.
+`include` lists only the directories that exist for your mode: websites have no `src`, and `--no-testing` drops `tests`.
 
-### pytest — Testing
+### pytest: testing
 
 `pytest.toml` enables strict markers and config, branch coverage of `src`, and HTML, JSON and JUnit reports:
 
@@ -75,9 +95,9 @@ addopts = [
 forgepy_pass_with_no_tests = true
 ```
 
-`forgepy_pass_with_no_tests` comes from Forge.py's pytest plugin and treats "no tests collected" as success, so a brand-new project's CI passes before it has real tests.
+`forgepy_pass_with_no_tests` comes from the pytest plugin that Forge.py installs. It treats "no tests collected" as success, so a new project's CI passes before it has real tests. Add `--cov-fail-under` to `addopts` to enforce a coverage threshold; see [Examples](examples.md#enforcing-coverage-thresholds).
 
-### pre-commit — Git Hooks
+### pre-commit: Git hooks
 
 `.pre-commit-config.yaml` runs everything through `uv run`, so the hooks use the same tool versions as CI:
 
@@ -87,11 +107,12 @@ forgepy_pass_with_no_tests = true
 | `ruff format` | pre-commit |
 | `forgepy sync --check` | pre-commit |
 | `basedpyright` | pre-push |
-| `cz check` (commitizen) | commit-msg — only with versioning on |
+| `poe compat` (vermin and `forgepy check-jython`) | pre-commit, when a file under `src/` changes; only with `--jython` |
+| `cz check` (Commitizen) | commit-msg; only with versioning on |
 
 Install them with `uv run poe hooks`.
 
-### commitizen — Commit Messages
+### Commitizen: commit messages
 
 With versioning on, `[tool.commitizen]` is added to `pyproject.toml`:
 
@@ -101,15 +122,15 @@ name = "cz_conventional_commits"
 tag_format = "v$version"
 ```
 
-## Build & Release
+## Build and release
 
-### uv_build — Packaging
+### uv_build: packaging
 
-Backends and libraries use the `uv_build` backend. Backends and websites are marked `Private :: Do Not Upload` so they can never be published to PyPI by accident; websites also set `tool.uv.package = false` because a docs site has no importable module.
+Backends and libraries use the `uv_build` build backend. Every mode except `--library` gets the `Private :: Do Not Upload` classifier, so PyPI rejects an accidental upload. Websites and `--jython` projects have no build system and set `[tool.uv] package = false`, as neither has a Python 3 package to install.
 
-### release-please — Versioning
+### release-please: versioning
 
-`.github/release.json` configures release-please for a Python project and keeps the version in `uv.lock` in step with `pyproject.toml`:
+With versioning on, `.github/release.json` configures release-please for a Python project and keeps the version in `uv.lock` in step with `pyproject.toml`:
 
 ```json
 {
@@ -130,14 +151,14 @@ Backends and libraries use the `uv_build` backend. Backends and websites are mar
 
 `--docker` adds a multi-stage `Dockerfile`:
 
-- **Backend:** builds the virtual environment with uv on `python:<version>-slim-bookworm` and runs `python -m <package>` as a non-root `app` user. uv is installed with pip, whose wheels cover every platform `python:slim` does; pass `--build-arg UV_VERSION=<version>` to change it.
+- **Backend:** builds the virtual environment with uv on `python:<version>-slim-bookworm` and runs `python -m <package>` as a non-root `app` user. uv is installed with pip, whose wheels cover every platform `python:slim` does. Pass `--build-arg UV_VERSION=<version>` to change its version.
 - **Website:** builds the static site with Zensical once on the build host and serves it with `nginx:stable-alpine` on port 80.
 
-CI builds the image for every configured platform — see [Job Reference](workflows/reference.md#dockeryml).
+CI builds the image for every configured platform. See [docker.yml](workflows/reference.md#dockeryml) in the job reference.
 
-### nfpm — Debian Packaging
+### nFPM: Debian packaging
 
-`--debian` adds `nfpm.yaml`, a systemd unit (`packaging/<name>.service`), a `postinstall.sh`, and `packaging/build_deb.py`. `uv run poe build-deb` builds a relocatable virtual environment against the system Python and packages it as a `.deb`.
+`--debian` adds `nfpm.yaml`, a systemd unit (`packaging/<name>.service`), `packaging/postinstall.sh` and `packaging/build_deb.py`. `uv run poe build-deb` builds a relocatable virtual environment against the system Python and packages it as a `.deb` that installs to `/opt/<name>` and depends on `python3`. It needs the `nfpm` CLI on your `PATH`.
 
 ## Jython projects
 

@@ -1,13 +1,13 @@
 ---
 title: Contributing
-description: Quality control tools and commit conventions for contributing to Forge.py.
+description: Set up a development environment for Forge.py, run its checks, and write commit messages.
 ---
 
 # Contributing
 
-This repository uses a strict set of tools to ensure code quality and a standard development experience — the same toolchain Forge.py scaffolds into other projects.
+This page is for people who want to change Forge.py itself. The repository uses the same toolchain that Forge.py scaffolds into other projects.
 
-## Development Setup
+## Development setup
 
 ```bash
 git clone https://github.com/Apollogeddon/forgepy
@@ -16,45 +16,44 @@ uv sync
 uv run poe hooks
 ```
 
-## Quality Control Tools
+## Quality checks
 
 | Task | What it runs |
 | :--- | :--- |
 | `uv run poe lint` | Ruff lint with fixes, then Ruff format |
 | `uv run poe type` | basedpyright in strict mode |
 | `uv run poe test` | The full pytest suite, including the slow end-to-end tests |
-| `uv run poe test:unit` | Unit tests only — quiet, no coverage, skips the slow tests |
+| `uv run poe test:unit` | Unit tests only: quiet, no coverage, skips the slow tests |
 | `uv run poe security` | OSV-Scanner over the dependency tree |
 
 Run `lint`, `type` and `test` before opening a pull request.
 
-> **Note**
-> The slow tests (marked `slow`) scaffold real projects, run `uv sync`, and execute every generated task. They are the only tests that catch wiring bugs such as a missing dependency, so run the full `poe test` for changes to templates, dependencies or the vendored configs.
+!!! note
+    The slow tests (marked `slow`) scaffold real projects, run `uv sync`, and run every generated task. They are the only tests that catch wiring bugs such as a missing dependency, so run the full `poe test` after changing templates, dependencies or the vendored configs.
 
 ## Documentation
 
-This site lives in `docs/` as its own uv project, scaffolded with `forgepy init --website`:
+This site lives in `docs/` as its own uv project, scaffolded with `forgepy init --website`. Preview it locally:
 
 ```bash
 cd docs
 uv sync
-uv run poe dev     # live preview at http://127.0.0.1:8000/forgepy/
+uv run poe dev     # serves a live preview at http://127.0.0.1:8000/forgepy/
 ```
 
-## Conventional Commits
+## Commit messages
 
-The project follows the [Conventional Commits](https://www.conventionalcommits.org/) specification, enforced by commitizen. This format is required for the automated release pipeline to work.
+Commit messages follow the [Conventional Commits](https://www.conventionalcommits.org/) specification, which Commitizen checks in the `commit-msg` hook. release-please reads them to decide the next version and write the changelog.
 
-### Commit Types
+### Commit types
 
-1. **Features** (`feat`) — Triggers a **minor** release.
-   Example: `feat: add docker support for website mode`
+- **Features** (`feat`) trigger a minor release.
+  For example: `feat: add docker support for website mode`
 
-2. **Fixes** (`fix`) — Triggers a **patch** release.
-   Example: `fix: include tests in pyrightconfig only when present`
+- **Fixes** (`fix`) trigger a patch release.
+  For example: `fix: include tests in pyrightconfig only when present`
 
-3. **Maintenance** (`chore`) — Does **not** trigger a release.
-   Example: `chore: update readme`
+- **Maintenance** (`chore`, `ci`, `docs` and similar) doesn't trigger a release.
+  For example: `docs: clarify the sync command`
 
-> **Breaking Changes**
-> Include `BREAKING CHANGE:` in the footer or a `!` after the type/scope (e.g., `feat!: rename the sync command`) to trigger a **major** release.
+For a breaking change, add a `BREAKING CHANGE:` footer or a `!` after the type or scope, for example `feat!: rename the sync command`. It triggers a major release.
