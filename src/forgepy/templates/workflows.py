@@ -29,6 +29,7 @@ jobs:
       id-token: write
     with:
       python_version: '__FORGEPY_PYTHON_VERSION__'
+      auto_patch: true
 """
 
 SERVICE_WORKFLOW = """\
@@ -53,6 +54,7 @@ jobs:
       pull-requests: write
     with:
       python_version: '__FORGEPY_PYTHON_VERSION__'
+      auto_patch: true
 """
 
 
@@ -80,6 +82,7 @@ jobs:
       pull-requests: write
     with:
       python_version: '__FORGEPY_PYTHON_VERSION__'
+      auto_patch: true
 """
 
 DEBIAN_WORKFLOW = """\
@@ -104,6 +107,7 @@ jobs:
       pull-requests: write
     with:
       python_version: '__FORGEPY_PYTHON_VERSION__'
+      auto_patch: true
 """
 
 
