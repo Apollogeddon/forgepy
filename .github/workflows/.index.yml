@@ -27,3 +27,23 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write
+
+  pages:
+    uses: ./.github/workflows/website.yml
+    with:
+      runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      python_version: '3.13'
+      working_directory: 'docs'
+      build_command: 'uv run zensical build --strict'
+      enable_secrets: false
+      run_tests: false
+      enable_versioning: false
+      # the library job already auto-merges this repo's PRs
+      auto_merge: false
+      # distinct from the library job's 'dist' artifact in the same run
+      artifact_name: 'pages-dist'
+    permissions:
+      contents: write
+      id-token: write
+      pages: write
+      pull-requests: write

@@ -90,6 +90,8 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Set up QEMU
         if: matrix.emulate
         uses: docker/setup-qemu-action@v4
@@ -183,6 +185,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # There's no Docker daemon for docker login, so write the credentials buildx reads instead.
       - name: Registry credentials
