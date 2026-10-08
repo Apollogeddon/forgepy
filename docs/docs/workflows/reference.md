@@ -86,7 +86,7 @@ Outputs `new_release_published`, `version` and `tag_name` for the delivery jobs.
 
 *Dependabot auto-merge.*
 
-1. **`auto-merge`** — For pull requests opened by Dependabot, enables GitHub's auto-merge so the PR merges once required checks pass.
+1. **`auto-merge`** — For pull requests opened by Dependabot, enables GitHub's auto-merge so the PR merges once required checks pass. GitHub Actions updates are left for a person to merge: they change workflow files, which the workflow's `GITHUB_TOKEN` may never merge.
 
 ## service.yml
 
