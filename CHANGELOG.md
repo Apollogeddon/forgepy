@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2](https://github.com/Apollogeddon/forgepy/compare/v0.3.1...v0.3.2) (2026-10-08)
+
+
+### Bug Fixes
+
+* auto-merge a Dependabot PR that only waits on checks nobody requires ([9a57760](https://github.com/Apollogeddon/forgepy/commit/9a57760b19a36632ef9e3c5b98aaa4945d048239))
+* auto-merge a Dependabot PR that only waits on checks nobody requires ([512f56b](https://github.com/Apollogeddon/forgepy/commit/512f56bf578ed539290df4a8c3b62c5724b7b946))
+
 ## [0.3.1](https://github.com/Apollogeddon/forgepy/compare/v0.3.0...v0.3.1) (2026-10-08)
 
 
