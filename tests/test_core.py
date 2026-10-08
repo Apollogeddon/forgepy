@@ -334,7 +334,7 @@ def test_init_jython_lints_against_the_jython_base():
 
     ruff = fs.read_text(PROJECT / "ruff.toml")
     assert ruff.startswith('extend = ".forgepy/ruff-jython.toml"\n')
-    assert "target-version" not in ruff
+    assert ruff.endswith('[per-file-target-version]\n"tests/**" = "py313"\n')
     base = tomlkit.parse(fs.read_text(PROJECT / ".forgepy/ruff-jython.toml"))
     assert base["extend"] == "ruff.toml"
     assert {"UP", "PTH", "F401"} <= set(base["lint"]["ignore"])
