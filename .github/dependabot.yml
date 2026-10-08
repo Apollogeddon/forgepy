@@ -3,7 +3,7 @@ updates:
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
     # Limit open PRs to prevent flooding
     open-pull-requests-limit: 10
     # Group non-major updates to reduce PR volume
@@ -26,7 +26,7 @@ updates:
   - package-ecosystem: "uv"
     directory: "/docs"
     schedule:
-      interval: "daily"
+      interval: "weekly"
     groups:
       docs:
         patterns:
@@ -39,7 +39,11 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
     commit-message:
       prefix: "chore(ci)"
     ignore:
