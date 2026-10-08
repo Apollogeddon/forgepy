@@ -25,6 +25,9 @@ class WorkflowFeature(Feature):
             template = workflow_templates.SERVICE_WORKFLOW
 
         inputs: dict[str, bool] = {}
+        if cfg.jython:
+            # nothing to build: the scripts are deployed as they are
+            inputs["run_build"] = False
         if not cfg.testing:
             inputs["run_tests"] = False
         if not cfg.versioning:

@@ -20,6 +20,11 @@ on:
         required: false
         type: boolean
         default: true
+      sync_args:
+        description: "Extra arguments for uv sync, e.g. --group to pick a dependency group"
+        required: false
+        type: string
+        default: ''
 
 jobs:
   secure:
@@ -62,13 +67,20 @@ jobs:
         with:
           python-version: ${{ inputs.python_version }}
       - name: Install dependencies
-        run: uv sync --locked
+        # unquoted on purpose: it can hold several arguments
+        run: uv sync --locked $SYNC_ARGS
+        env:
+          SYNC_ARGS: ${{ inputs.sync_args }}
       - name: Ruff Lint
         run: uv run ruff check .
       - name: Ruff Format Check
         run: uv run ruff format --check .
       - name: Type Check
         run: uv run basedpyright
+      # a --jython project's scripts must stay valid Jython 2.7
+      - name: Jython 2.7 Compatibility
+        if: hashFiles(format('{0}/.forgepy/ruff-jython.toml', inputs.working_directory)) != ''
+        run: uv run poe compat
       - name: Check forgepy config drift
         if: hashFiles(format('{0}/.forgepy/**', inputs.working_directory)) != ''
         run: uv run forgepy sync --check

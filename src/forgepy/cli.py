@@ -7,6 +7,7 @@ from pathlib import Path
 from forgepy import __version__, console
 from forgepy.config import InitConfig, Mode
 from forgepy.core import init
+from forgepy.jython import check as check_jython
 from forgepy.sync import sync
 
 
@@ -59,6 +60,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     init_parser.add_argument("--docker", action="store_true", help="Add a Dockerfile (not available for --library)")
     init_parser.add_argument("--debian", action="store_true", help="Add nfpm-based .deb packaging (--backend only)")
+    init_parser.add_argument(
+        "--jython",
+        action="store_true",
+        help="Scripts that run on Jython 2.7: no packaging, lint rules that keep Python 2 syntax, "
+        "and a vermin compatibility check (--backend only)",
+    )
 
     init_parser.add_argument("--force", action="store_true", help="Overwrite existing config files")
     init_parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing")
@@ -84,6 +91,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "-C", "--path", dest="path", default=".", metavar="DIR", help="Target directory (default: current directory)"
     )
 
+    jython_parser = subparsers.add_parser(
+        "check-jython",
+        help="Find Python 3-only syntax that vermin misses in Jython 2.7 scripts",
+        description="Report commas after *args or **kwargs, which ruff's formatter adds and Jython 2.7 rejects.",
+    )
+    jython_parser.add_argument("paths", nargs="+", type=Path, metavar="PATH", help="Files or directories to check")
+
     return parser
 
 
@@ -105,6 +119,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "sync":
         return sync(Path(args.path).resolve(), check=args.check)
 
+    if args.command == "check-jython":
+        return check_jython(args.paths)
+
     cfg = InitConfig(
         mode=args.mode or Mode.BACKEND,
         force=args.force,
@@ -114,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         versioning=_resolve(args.versioning, args.all),
         docker=args.docker,
         debian=args.debian,
+        jython=args.jython,
         python_version=args.python_version,
         target=Path(args.path).resolve(),
     )

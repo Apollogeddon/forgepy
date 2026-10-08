@@ -125,3 +125,30 @@ def test_init_then_sync_check_passes(tmp_path: Path):
     run_cli("init", cwd=tmp_path)
     result = run_cli("sync", "--check", cwd=tmp_path)
     assert result.returncode == 0
+
+
+@pytest.mark.parametrize("args", [("--library",), ("--website",), ("--docker",), ("--debian",)])
+def test_jython_with_packaging_or_other_modes_rejected(tmp_path: Path, args: tuple[str, ...]):
+    result = run_cli("init", "--jython", *args, "--dry-run", cwd=tmp_path)
+    assert result.returncode != 0
+    assert "jython" in result.stderr.lower()
+
+
+def test_jython_creates_a_jython_script(tmp_path: Path):
+    result = run_cli("init", "--jython", cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "src" / "hello.py").exists()
+    assert (tmp_path / ".forgepy" / "ruff-jython.toml").exists()
+
+
+def test_jython_without_linting_rejected(tmp_path: Path):
+    result = run_cli("init", "--jython", "--no-linting", "--dry-run", cwd=tmp_path)
+    assert result.returncode != 0
+    assert "jython" in result.stderr.lower()
+
+
+def test_check_jython_fails_on_a_comma_after_kwargs(tmp_path: Path):
+    (tmp_path / "script.py").write_text("handler(\n    event,\n    **kwargs,\n)\n", encoding="utf-8")
+    result = run_cli("check-jython", "script.py", cwd=tmp_path)
+    assert result.returncode == 1
+    assert "script.py:4" in result.stdout + result.stderr

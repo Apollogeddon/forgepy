@@ -21,7 +21,7 @@ class BaseFeature(Feature):
         return True
 
     def apply(self, ctx: FeatureContext) -> bool:
-        if not ctx.cfg.mode.is_website:
+        if ctx.cfg.packaged:
             pj.set_table_if_absent(
                 ctx.pyproject,
                 ("build-system",),
@@ -40,10 +40,18 @@ class BaseFeature(Feature):
             pj.ensure_classifier(ctx.pyproject, PRIVATE_CLASSIFIER)
 
         ok = True
-        if ctx.cfg.mode.is_website:
-            # A docs site has no importable module, so uv must not try to build/install it.
+        if not ctx.cfg.packaged:
+            # A docs site has no importable module, and Jython scripts aren't a Python 3 package,
+            # so uv must not try to build/install it: it only installs the dev tools.
             pj.set_key_if_absent(ctx.pyproject, ("tool", "uv"), "package", False, force=ctx.cfg.force)
-        else:
+        if ctx.cfg.jython:
+            project_name = pj.project_name(ctx.pyproject, ctx.cwd)
+            ok &= create_if_missing(
+                ctx,
+                "src/hello.py",
+                package_templates.render(package_templates.JYTHON_SCRIPT_PY, project_name=project_name),
+            )
+        elif ctx.cfg.packaged:
             # uv_build requires the module to exist at `uv sync`/`uv build` time.
             module_name = pj.package_module_name(ctx.pyproject, ctx.cwd)
             project_name = pj.project_name(ctx.pyproject, ctx.cwd)
