@@ -277,3 +277,27 @@ def test_init_release_config_bumps_the_normalized_name_in_uv_lock():
     # release-please's TOML parser wraps each value, and uv.lock records the PEP 503 normalized name;
     # with @.name=='...' or the declared name, release-please matches nothing and the lock never moves
     assert extra["jsonpath"] == "$.package[?(@.name.value=='my-project')].version"
+
+
+@pytest.mark.parametrize(
+    "cfg",
+    [
+        InitConfig(target=PROJECT),
+        InitConfig(target=PROJECT, mode=Mode.LIBRARY),
+        InitConfig(target=PROJECT, mode=Mode.WEBSITE),
+        InitConfig(target=PROJECT, debian=True),
+        InitConfig(target=PROJECT, docker=True),
+    ],
+    ids=["backend", "library", "website", "debian", "docker"],
+)
+def test_init_generates_least_privilege_ci_that_never_cancels_main(cfg: InitConfig):
+    fs = MemoryFileSystem()
+    init(cfg, fs)
+    workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
+    assert "refs/heads/main" in workflow["concurrency"]["cancel-in-progress"]
+    for name, job in workflow["jobs"].items():
+        # the called workflows only use GITHUB_TOKEN, which they get without inheriting every secret
+        assert "secrets" not in job, f"{name} passes secrets"
+        # only PyPI trusted publishing and GitHub Pages need an OIDC token
+        if name not in ("library", "website"):
+            assert "id-token" not in job.get("permissions", {}), f"{name} asks for id-token"
