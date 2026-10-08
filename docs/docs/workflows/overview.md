@@ -114,6 +114,8 @@ jobs:
 | `enable_secrets` | `true` | Run the Gitleaks secret scan |
 | `artifact_name` | `'dist'` | Name of the build artifact passed between jobs (`library.yml`, `website.yml`) |
 | `run_tests` | `true` | Run pytest — `forgepy init --no-testing` sets it to `false` |
+| `run_build` | `true` | Run the build job (`testing.yml`, `service.yml`) — `forgepy init --jython` sets it to `false` |
+| `sync_args` | `''` | Extra arguments for every `uv sync`, such as `--group` to pick a dependency group (`quality.yml`, `testing.yml`, `service.yml`) |
 | `auto_patch` | `true` | On `main`, upgrade packages with known vulnerabilities in `uv.lock` and commit the result |
 | `enable_versioning` | `true` | Run release-please — `forgepy init --no-versioning` sets it to `false` |
 

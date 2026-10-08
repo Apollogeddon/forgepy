@@ -50,6 +50,8 @@ By default, this sets up a **Python Backend/Service**. You can specify other mod
 * `--library` for publishable PyPI packages.
 * `--website` for static documentation sites (Zensical).
 
+Add `--jython` for scripts that run on Jython 2.7: uv installs only the dev tools, the lint rules keep Python 2 syntax, and a `compat` task checks the scripts with vermin.
+
 This command will:
 
 * **Scaffold Configs:** Create `ruff.toml`, `pyrightconfig.json`, `pytest.toml`, `.pre-commit-config.yaml`, and others depending on the mode (e.g., `Dockerfile`, `nfpm.yaml`, or `mkdocs.yml`).

@@ -1,0 +1,16 @@
+# Managed by forgepy. Do not edit directly — changes are overwritten by `forgepy sync`.
+# For code that runs on Jython 2.7: forgepy's rules, less the ones whose fixes need Python 3.
+extend = "ruff.toml"
+# the oldest version ruff supports, so no rule or formatting assumes a newer Python
+target-version = "py37"
+
+[lint]
+ignore = [
+    "UP",     # pyupgrade: f-strings, super() without arguments and other Python 3 syntax
+    "PTH",    # pathlib, which Jython 2.7 doesn't have
+    "B904",   # raise ... from
+    "SIM105", # contextlib.suppress
+    "RUF005", # [*a, b] unpacking
+    "RUF012", # ClassVar annotations
+    "F401",   # imports used only by type comments, which ruff doesn't read; basedpyright checks them
+]

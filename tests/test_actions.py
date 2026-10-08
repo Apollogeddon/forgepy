@@ -115,3 +115,13 @@ def test_pipelines_expose_release_outputs_for_docker_job(name: str):
     workflow_call: YamlDoc = on_block.get("workflow_call") or {}
     outputs: YamlDoc = workflow_call.get("outputs") or {}
     assert {"new_release_published", "version"} <= set(outputs)
+
+
+def test_generated_jython_workflow_inputs_are_declared():
+    rendered = workflow_templates.render(
+        workflow_templates.SERVICE_WORKFLOW, python_version="3.13", inputs={"run_build": False}
+    )
+    job = yaml.safe_load(rendered)["jobs"]["service"]
+    with (WORKFLOWS_DIR / "service.yml").open(encoding="utf-8") as f:
+        declared = _declared_inputs(yaml.safe_load(f))
+    assert set(job["with"]) <= declared

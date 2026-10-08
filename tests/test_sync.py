@@ -52,3 +52,17 @@ def test_sync_check_does_not_write():
     fs = MemoryFileSystem()
     assert sync(PROJECT, check=True, fs=fs) == 1
     assert not fs.exists(PROJECT / ".forgepy/ruff.toml")
+
+
+def test_sync_refreshes_the_jython_base_where_present():
+    fs = MemoryFileSystem()
+    fs.write_text(PROJECT / ".forgepy/ruff-jython.toml", "stale content")
+    assert sync(PROJECT, check=True, fs=fs) == 1
+    assert sync(PROJECT, fs=fs) == 0
+    assert fs.read_text(PROJECT / ".forgepy/ruff-jython.toml") == templates.load_config("ruff-jython.toml")
+
+
+def test_sync_does_not_add_the_jython_base():
+    fs = MemoryFileSystem()
+    sync(PROJECT, fs=fs)
+    assert not fs.exists(PROJECT / ".forgepy/ruff-jython.toml")
