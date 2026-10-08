@@ -115,6 +115,7 @@ jobs:
 
   deploy:
     runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
     needs: [testing, version, release-testing]
     # !failure() rather than success(), so a skipped version or checks job doesn't skip the deploy
     if: |
