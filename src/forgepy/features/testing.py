@@ -37,7 +37,11 @@ class TestingFeature(Feature):
         return cfg.testing
 
     def apply(self, ctx: FeatureContext) -> bool:
-        ok = create_file(ctx, "pytest.toml", PYTEST_TOML)
+        # Jython scripts aren't an installed package, so the tests import them from src/
+        pytest_toml = PYTEST_TOML
+        if ctx.cfg.jython:
+            pytest_toml = pytest_toml.replace("[pytest]\n", '[pytest]\npythonpath = ["src"]\n')
+        ok = create_file(ctx, "pytest.toml", pytest_toml)
         ok &= create_if_missing(ctx, "tests/test_placeholder.py", TEST_PLACEHOLDER)
         pj.set_task(ctx.pyproject, "test", "pytest", force=ctx.cfg.force)
         return ok

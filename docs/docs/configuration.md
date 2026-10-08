@@ -138,3 +138,19 @@ CI builds the image for every configured platform — see [Job Reference](workfl
 ### nfpm — Debian Packaging
 
 `--debian` adds `nfpm.yaml`, a systemd unit (`packaging/<name>.service`), a `postinstall.sh`, and `packaging/build_deb.py`. `uv run poe build-deb` builds a relocatable virtual environment against the system Python and packages it as a `.deb`.
+
+## Jython projects
+
+`forgepy init --jython` is for scripts that run on Jython 2.7, such as an application platform's scripting layer. The tools still run on CPython 3: uv installs them and the test suite, but doesn't build or install the project itself (`[tool.uv] package = false`, no build system and no `build` task). Scripts go under `src/`, and `pytest.toml` puts `src` on the import path.
+
+Ruff can't target Python 2, so the checks keep the code within the subset both versions share:
+
+- `ruff.toml` extends `.forgepy/ruff-jython.toml`, a managed base that extends forgepy's usual one and turns off the rules whose fixes need Python 3: `UP` (f-strings, `super()` without arguments and other upgrades), `PTH` (pathlib), `B904` (`raise ... from`), `SIM105` (`contextlib.suppress`), `RUF005`, `RUF012` and `F401`. It targets `py37`, the oldest version Ruff supports. `forgepy sync` refreshes it in projects that have it.
+- Python 2 code annotates with type comments and imports their names under `if MYPY:`, which Jython never runs. `pyrightconfig.json` defines `MYPY` as true so basedpyright follows those imports, and turns off `reportTypeCommentUsage`. basedpyright stays in strict mode; relax `typeCheckingMode` in your own `pyrightconfig.json` if a platform's stubs need it. It also reports the unused imports that Ruff's `F401` would, since it reads the type comments.
+- The `compat` task runs [vermin](https://github.com/netromdk/vermin) over `src/` and fails on any syntax, module or function Jython 2.7 doesn't have. vermin reads no `pyproject.toml` settings, so its options are in the task; it ignores the `typing` module, as the scripts import it only for type comments. The task then runs `forgepy check-jython src`, which finds a comma after `*args` or `**kwargs`: `ruff format` adds one when it puts each argument on its own line, Python 2 rejects it, and vermin can't see it. Shorten the call or definition so it fits on fewer lines, or keep the formatter off it with `# fmt: off` and `# fmt: on`. The pre-commit hook runs the task when a file under `src/` changes, and CI runs it in the quality job.
+- basedpyright checks the scripts as Python 3, so it doesn't know Python 2's builtins. A script that uses `unicode`, `basestring`, `long` or `xrange` needs them declared in a `__builtins__.pyi` at the project root, for example `unicode = str`.
+
+The tests run on CPython 3, so vermin doesn't check them, but Ruff applies the same rules to them as to the scripts.
+
+If the scripts are type-checked against several versions of a platform's stubs, put each version in its own dependency group and pass `sync_args` (for example `--no-default-groups --group dev --group stubs-v2`) to `testing.yml` from a matrix job.
+
