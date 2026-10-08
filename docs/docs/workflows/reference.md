@@ -42,7 +42,7 @@ concurrency:
 
 jobs:
   service:
-    uses: apollogeddon/forgejs/.github/workflows/service.yml@main
+    uses: apollogeddon/forgepy/.github/workflows/service.yml@main
     with:
       test_on_push: false        # pushes to main only run release-please
       # test_release_prs: false  # also skip release-please's release PRs
