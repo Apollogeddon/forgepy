@@ -77,19 +77,22 @@ class LintingFeature(Feature):
 
     def apply(self, ctx: FeatureContext) -> bool:
         ok = True
+        python_target = f"py{ctx.cfg.python_version.replace('.', '')}"
+        tests_target = ""
         ok &= write_managed(ctx, ".forgepy/ruff.toml", templates.load_config("ruff.toml"))
         if ctx.cfg.jython:
             # the Jython base sets its own target version, the oldest ruff supports
             ok &= write_managed(ctx, ".forgepy/ruff-jython.toml", templates.load_config("ruff-jython.toml"))
             ruff_base = 'extend = ".forgepy/ruff-jython.toml"\n'
+            # the tests run on CPython, so they may use syntax newer than the scripts' target
+            tests_target = f'\n[per-file-target-version]\n"tests/**" = "{python_target}"\n'
         else:
-            ruff_base = (
-                f'extend = ".forgepy/ruff.toml"\ntarget-version = "py{ctx.cfg.python_version.replace(".", "")}"\n'
-            )
+            ruff_base = f'extend = ".forgepy/ruff.toml"\ntarget-version = "{python_target}"\n'
+
         ok &= create_file(
             ctx,
             "ruff.toml",
-            f'{ruff_base}\n[lint.per-file-ignores]\n"tests/**" = ["S101", "S603", "S607"]\n',
+            f'{ruff_base}\n[lint.per-file-ignores]\n"tests/**" = ["S101", "S603", "S607"]\n{tests_target}',
         )
         ok &= write_managed(
             ctx,
