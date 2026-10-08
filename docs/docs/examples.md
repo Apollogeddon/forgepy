@@ -79,7 +79,6 @@ jobs:
     with:
       working_directory: 'services/api'
       python_version: '3.13'
-    secrets: inherit
 ```
 
 ### Testing Across Python Versions
@@ -127,5 +126,4 @@ jobs:
       push: ${{ github.ref == 'refs/heads/main' && needs.service.outputs.new_release_published == 'true' }}
       version: ${{ needs.service.outputs.version }}
       platforms: 'linux/amd64,linux/arm64,linux/arm/v7'
-    secrets: inherit
 ```
