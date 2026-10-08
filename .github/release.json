@@ -6,7 +6,7 @@
         {
           "type": "toml",
           "path": "uv.lock",
-          "jsonpath": "$.package[?(@.name=='forgepy')].version"
+          "jsonpath": "$.package[?(@.name.value=='forgepy')].version"
         }
       ]
     }
