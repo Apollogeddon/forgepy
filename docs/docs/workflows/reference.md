@@ -71,7 +71,7 @@ In that mode release-please tags the release before the push's checks run. If th
 
 1. Calls → `quality.yml`.
 2. **`testing`** — `uv sync --locked` and `pytest` (skip with `run_tests: false`); uploads the coverage report.
-3. **`build`** — Runs `build_command` (default `uv build`) and uploads the result as the `artifact_name` artifact.
+3. **`build`** — Runs `build_command` (default `uv build`) and uploads the result as the `artifact_name` artifact. It runs alongside `testing`, once `quality` passes.
 4. **`patch`** — On `main` with `auto_patch` enabled, scans `uv.lock` with OSV-Scanner, upgrades just the vulnerable packages with `uv lock --upgrade-package` (transitive ones included, within the ranges `pyproject.toml` allows, without building any package), and commits the new `uv.lock`. OSV-Scanner can't fix a `uv.lock` in place, so uv does the upgrade. *(Needs: quality, testing, build)*
 
 ## version.yml
