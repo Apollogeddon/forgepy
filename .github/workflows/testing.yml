@@ -24,6 +24,11 @@ on:
         required: false
         type: boolean
         default: true
+      auto_patch:
+        description: "On main, upgrade packages with known vulnerabilities in uv.lock and commit the result"
+        required: false
+        type: boolean
+        default: true
       artifact_name:
         required: false
         type: string
@@ -51,6 +56,8 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -81,6 +88,8 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -96,3 +105,43 @@ jobs:
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ inputs.working_directory }}/dist
+
+  patch:
+    if: inputs.auto_patch && github.ref == 'refs/heads/main'
+    needs: [quality, testing, build]
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      # keeps the token in .git/config, as this job pushes the patch commit
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          # no dependency cache in a job that pushes to main
+          enable-cache: false
+      # osv-scanner can't fix uv.lock in place, so it finds the vulnerable packages and uv upgrades
+      # just those, transitive ones included, within the ranges pyproject.toml already allows
+      - name: Upgrade vulnerable packages
+        run: |
+          curl -sSL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o "$RUNNER_TEMP/osv-scanner"
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          # 1: vulnerabilities found; 128: nothing to scan besides the project itself; anything else fails the job
+          status=0
+          "$RUNNER_TEMP/osv-scanner" scan source -L uv.lock --format json --output-file "$RUNNER_TEMP/osv.json" || status=$?
+          if [ "$status" -eq 128 ]; then exit 0; fi
+          if [ "$status" -gt 1 ]; then exit "$status"; fi
+          mapfile -t packages < <(jq -r '[.results[]?.packages[]? | select(.package.ecosystem == "PyPI") | .package.name | ascii_downcase | gsub("[-_.]+"; "-")] | unique[]' "$RUNNER_TEMP/osv.json")
+          if [ "${#packages[@]}" -eq 0 ]; then exit 0; fi
+          args=()
+          for package in "${packages[@]}"; do args+=(--upgrade-package "$package"); done
+          # --no-build: resolve from published metadata only, so no package's build code runs in this job
+          uv lock --no-build "${args[@]}"
+      - name: Commit Security Patches
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "fix(deps): upgrade packages with known vulnerabilities via osv-scanner"
+          file_pattern: 'uv.lock'

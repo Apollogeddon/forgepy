@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: true
+      auto_patch:
+        description: "On main, upgrade packages with known vulnerabilities in uv.lock and commit the result"
+        required: false
+        type: boolean
+        default: true
       python_version:
         required: false
         type: string
@@ -59,6 +64,7 @@ jobs:
       working_directory: ${{ inputs.working_directory }}
       python_version: ${{ inputs.python_version }}
       enable_secrets: ${{ inputs.enable_secrets }}
+      auto_patch: ${{ inputs.auto_patch }}
       run_tests: ${{ inputs.run_tests }}
       artifact_name: ${{ inputs.artifact_name }}
 
@@ -92,6 +98,7 @@ jobs:
       working_directory: ${{ inputs.working_directory }}
       python_version: ${{ inputs.python_version }}
       enable_secrets: ${{ inputs.enable_secrets }}
+      auto_patch: ${{ inputs.auto_patch }}
       run_tests: ${{ inputs.run_tests }}
       artifact_name: ${{ inputs.artifact_name }}
 
@@ -108,6 +115,8 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}
