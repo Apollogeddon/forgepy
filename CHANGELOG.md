@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/Apollogeddon/forgepy/compare/v0.3.2...v0.4.0) (2026-10-08)
+
+
+### Features
+
+* scaffold projects whose scripts run on Jython 2.7 ([b23ef1a](https://github.com/Apollogeddon/forgepy/commit/b23ef1a74eb31626ea4db8e277f3387a4cda0e9d))
+* scaffold projects whose scripts run on Jython 2.7 ([e594bba](https://github.com/Apollogeddon/forgepy/commit/e594bba3b7c04b61df7e0134bc1759e153fbcdbe))
+
+
+### Bug Fixes
+
+* target a Jython project's tests at the project's Python ([f6f73da](https://github.com/Apollogeddon/forgepy/commit/f6f73da3e8ed7baffbc304b56a85a85d1a91c0d7))
+* target a Jython project's tests at the project's Python ([56ad4b8](https://github.com/Apollogeddon/forgepy/commit/56ad4b858549a2e8d9a19e1755718f96f444f273))
+
 ## [0.3.2](https://github.com/Apollogeddon/forgepy/compare/v0.3.1...v0.3.2) (2026-10-08)
 
 
