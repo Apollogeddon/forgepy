@@ -301,6 +301,6 @@ def test_init_generates_least_privilege_ci_that_never_cancels_main(cfg: InitConf
         # only PyPI trusted publishing and GitHub Pages need an OIDC token
         if name not in ("library", "website"):
             assert "id-token" not in job.get("permissions", {}), f"{name} asks for id-token"
-    # every pipeline job upgrades vulnerable packages on main, as forgejs's does
+    # every pipeline job upgrades vulnerable packages on main
     pipeline = next(job for name, job in workflow["jobs"].items() if name != "docker")
     assert pipeline["with"]["auto_patch"] is True
