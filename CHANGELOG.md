@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/Apollogeddon/forgepy/compare/v0.4.0...v0.4.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **ci:** leave Dependabot's GitHub Actions updates for a person to merge ([50cead3](https://github.com/Apollogeddon/forgepy/commit/50cead34687ec160a494c98d1a659ffaad21dcfa))
+* **ci:** leave Dependabot's GitHub Actions updates for a person to merge ([27d8ba7](https://github.com/Apollogeddon/forgepy/commit/27d8ba726b525f3466dfc2037e1a6d53ab2670d7))
+
 ## [0.4.0](https://github.com/Apollogeddon/forgepy/compare/v0.3.2...v0.4.0) (2026-10-08)
 
 
