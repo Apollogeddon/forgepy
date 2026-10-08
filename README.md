@@ -1,18 +1,18 @@
 <br />
 <div align="center">
   <a href="https://apollogeddon.github.io/forgepy/">
-    <img src="docs/docs/assets/forgepy.svg" alt="Logo" width="100" height="100">
+    <img src="docs/docs/assets/forgepy.svg" alt="Forge.py logo" width="100" height="100">
   </a>
 
   <h3 align="center">Forge.py</h3>
 
   <p align="center">
-    DevOps Support and Quality Control for modern Python projects
+    Quality tooling and CI/CD for Python projects, scaffolded with one command.
     <br />
-    <a href="https://apollogeddon.github.io/forgepy/"><strong>Explore the docs</strong></a>
+    <a href="https://apollogeddon.github.io/forgepy/"><strong>Read the docs</strong></a>
     <br />
     <br />
-    <a href="https://apollogeddon.github.io/forgepy/getting-started/">Getting Started</a>
+    <a href="https://apollogeddon.github.io/forgepy/getting-started/">Getting started</a>
     &middot;
     <a href="https://apollogeddon.github.io/forgepy/configuration/">Configuration</a>
     &middot;
@@ -22,9 +22,11 @@
 
 <br />
 
+Forge.py (`forgepy`) is a command-line tool that sets up linting, type checking, testing, Git hooks, releases and GitHub Actions CI in a uv-managed Python project. It is for teams that want every repository to use the same toolchain and configuration, and to upgrade it in one place.
+
 ## Installation
 
-forgepy isn't published to PyPI yet, so install it from GitHub:
+Forge.py isn't published to PyPI. Install it from GitHub with [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv tool install git+https://github.com/apollogeddon/forgepy
@@ -36,52 +38,68 @@ Or run it once without installing:
 uvx --from git+https://github.com/apollogeddon/forgepy forgepy init
 ```
 
-## Getting Started
+## Quick start
 
-To quickly set up your project with the recommended configurations, tasks, and CI workflows, use the `init` command.
+Run `init` in an existing project, or in an empty directory to start a new one, then install the toolchain and Git hooks:
 
 ```bash
-forgepy init [options]
+forgepy init
+uv sync
+uv run poe hooks
 ```
 
-By default, this sets up a **Python Backend/Service**. You can specify other modes:
+`init` scaffolds a backend service by default. Pick another mode with a flag:
 
-* `--backend` (Default) for Python services and applications.
-* `--library` for publishable PyPI packages.
-* `--website` for static documentation sites (Zensical).
+| Flag | Project type |
+| :--- | :--- |
+| `--backend` | Python service or application (default) |
+| `--library` | Package published to PyPI |
+| `--website` | Static documentation site built with [Zensical](https://zensical.org/) |
 
-Add `--jython` for scripts that run on Jython 2.7: uv installs only the dev tools, the lint rules keep Python 2 syntax, and a `compat` task checks the scripts with vermin.
+Add `--jython` to a backend for scripts that run on Jython 2.7, or `--docker` and `--debian` for container and `.deb` packaging. Run `forgepy init --help` for every flag, or see the [flag reference](https://apollogeddon.github.io/forgepy/getting-started/#cli-options).
 
-This command will:
+`init` does the following:
 
-* **Scaffold Configs:** Create `ruff.toml`, `pyrightconfig.json`, `pytest.toml`, `.pre-commit-config.yaml`, and others depending on the mode (e.g., `Dockerfile`, `nfpm.yaml`, or `mkdocs.yml`).
-* **Inject Tasks:** Add `lint`, `type`, `test`, and `build` to `[tool.poe.tasks]` in your `pyproject.toml`.
-* **Standardise:** Create a starter package so `uv sync` and the generated tooling work immediately, and leave existing files alone unless you pass `--force`.
+- Writes tool configs: `ruff.toml`, `pyrightconfig.json`, `pytest.toml`, `.pre-commit-config.yaml`, the release-please config and `.github/workflows/index.yml`, plus a `Dockerfile`, `nfpm.yaml` or `mkdocs.yml` depending on the mode.
+- Adds tasks such as `lint`, `type`, `test` and `build` to `[tool.poe.tasks]` in `pyproject.toml`.
+- Creates a starter package so `uv sync` and the generated tasks work straight away.
 
-Run `forgepy init --help` for the full flag reference.
+It is safe to re-run: existing files and tasks are left alone unless you pass `--force`, and your own source code is never overwritten.
 
-## Standardised Stack
+## Toolchain
 
-Forge.py enforces a standardised stack designed for performance and reliability:
+| Category | Tool |
+| :--- | :--- |
+| Linting and formatting | [Ruff](https://docs.astral.sh/ruff/) |
+| Type checking | [basedpyright](https://docs.basedpyright.com/) |
+| Testing | [pytest](https://docs.pytest.org/) with pytest-cov |
+| Tasks | [Poe the Poet](https://poethepoet.natn.io/) |
+| Git hooks | [pre-commit](https://pre-commit.com/) |
+| Commit messages | [Commitizen](https://commitizen-tools.github.io/commitizen/) |
+| Releases | [release-please](https://github.com/googleapis/release-please) |
+| Security scanning (CI) | [Gitleaks](https://github.com/gitleaks/gitleaks) and [OSV-Scanner](https://google.github.io/osv-scanner/) |
+| CI/CD | Reusable [GitHub Actions](https://docs.github.com/actions) workflows |
+| Containers (`--docker`) | Multi-platform images built with Docker Buildx and pushed to GHCR on release |
+| Debian packages (`--debian`) | [nFPM](https://nfpm.goreleaser.com/) |
 
-| Category | Tool | Description |
-| :--- | :--- | :--- |
-| **Linting & Formatting** | [Ruff](https://docs.astral.sh/ruff/) | Extremely fast linter and formatter replacing Flake8, isort, and Black. |
-| **Type Checking** | [basedpyright](https://docs.basedpyright.com/) | Strict-mode type checker built on Pyright. |
-| **Security Scanning** | [Gitleaks](https://github.com/gitleaks/gitleaks) + [OSV-Scanner](https://osv.dev/) | Secret detection and Google's vulnerability scanner for dependencies. |
-| **Testing** | [pytest](https://docs.pytest.org/) | Mature testing framework with coverage reporting. |
-| **Task Running** | [poethepoet](https://poethepoet.natn.io/) | Runs the project's tasks straight from `pyproject.toml`. |
-| **Git Hooks** | [pre-commit](https://pre-commit.com/) | Multi-language Git hooks manager. |
-| **Commits** | [commitizen](https://commitizen-tools.github.io/commitizen/) | Enforces Conventional Commits standards. |
-| **Releases** | [Release Please](https://github.com/googleapis/release-please) | Automated versioning and changelogs via GitHub Actions. |
-| **CI/CD** | [GitHub Actions](https://github.com/features/actions) | Reusable workflows for Testing, Quality, and Releases. |
-| **Containers** | [Docker Buildx](https://docs.docker.com/build/) | With `--docker`, CI builds the image for `linux/amd64` and `linux/arm64` (configurable via the `docker` job's `platforms` input) on every PR and pushes it to GHCR on release. |
+## Keeping projects up to date
 
-## Tooling & Versioning Strategy
+A generated project depends on `forgepy[toolchain]` as a dev dependency, which sets minimum versions for the tools. The project's own `uv.lock` pins the exact versions.
 
-Forge.py takes an opinionated, batteries-included approach to tooling.
+The Ruff and basedpyright base configs are copied into `.forgepy/`, and the project's `ruff.toml` and `pyrightconfig.json` extend them. To pick up a newer Forge.py and its configs:
 
-* **Managed Versions:** This package manages the versions of core tools (Ruff, basedpyright, pytest, ...) as dependencies.
-* **Simplified Upgrades:** To upgrade your linter or test runner, simply upgrade `forgepy`, then run `forgepy sync` to refresh the vendored configs in `.forgepy/` (`forgepy sync --check` reports drift without writing, and is already wired into the generated pre-commit hook and CI).
-* **Security First:** Security scanning is integrated into the standard workflow to catch vulnerabilities early.
-* **Stability:** Every mode is verified end-to-end (`uv sync` plus the full generated task list) before a new version is released.
+```bash
+uv lock --upgrade-package forgepy
+uv sync
+uv run forgepy sync
+```
+
+`forgepy sync --check` reports a stale `.forgepy/` without writing anything. The generated pre-commit hook and CI both run it. See [Configuration](https://apollogeddon.github.io/forgepy/configuration/) for details.
+
+## Documentation
+
+The full documentation is at [apollogeddon.github.io/forgepy](https://apollogeddon.github.io/forgepy/).
+
+## License
+
+Forge.py is released under the [MIT License](LICENSE).
