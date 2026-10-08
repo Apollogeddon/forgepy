@@ -26,6 +26,7 @@ on:
 jobs:
   release-please:
     runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: write
