@@ -11,7 +11,7 @@ hide:
 
 # Quality tooling,<br>zero configuration drift.
 
-<p>Reusable GitHub Actions workflows and tooling configurations for modern Python projects. Centralise your ruff, basedpyright and pytest setup and scaffold projects with a single command.</p>
+<p>Forge.py is a command-line tool that scaffolds linting, type checking, testing, releases and GitHub Actions CI into uv-managed Python projects, and keeps their Ruff, basedpyright and pytest setup in one place.</p>
 
 [Get Started :material-arrow-right:](getting-started.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/Apollogeddon/forgepy){ .md-button }
@@ -22,33 +22,33 @@ hide:
 
 <div class="grid cards fp-cols-2" markdown>
 
--   :material-tune-variant:{ .lg .middle .fp-icon } __Standardised Tooling__
+-   :material-tune-variant:{ .lg .middle .fp-icon } __Shared tool configs__
 
     ---
 
-    Default configurations for Ruff, basedpyright and pytest enforce consistency across every project from day one.
+    Every project extends the same Ruff and basedpyright base configs, and `forgepy sync` keeps them current.
 
--   :material-source-branch-sync:{ .lg .middle .fp-icon } __Reusable Workflows__
-
-    ---
-
-    Modular GitHub Actions workflows for testing, building, and releasing — no manual YAML authoring required.
-
--   :material-folder-plus-outline:{ .lg .middle .fp-icon } __Project Scaffolding__
+-   :material-source-branch-sync:{ .lg .middle .fp-icon } __Reusable workflows__
 
     ---
 
-    Bootstrap a complete repository instantly with a single `forgepy init`. No boilerplate to copy-paste.
+    GitHub Actions workflows for checks, builds, releases and delivery. `forgepy init` generates the caller for your project.
 
--   :material-tag-arrow-up-outline:{ .lg .middle .fp-icon } __Automated Releases__
+-   :material-folder-plus-outline:{ .lg .middle .fp-icon } __Project scaffolding__
 
     ---
 
-    release-please pipelines handle versioning, changelogs, and publishing deterministically from commit history.
+    `forgepy init` sets up a backend, library or documentation site, with optional Docker and Debian packaging.
+
+-   :material-tag-arrow-up-outline:{ .lg .middle .fp-icon } __Automated releases__
+
+    ---
+
+    release-please derives versions and changelogs from Conventional Commits, and the pipeline publishes each release.
 
 </div>
 
-## Quick Start { .fp-section-title }
+## Quick start { .fp-section-title }
 
 <div class="grid cards" markdown>
 
@@ -56,36 +56,36 @@ hide:
 
     ---
 
-    Install Forge.py from GitHub as a uv tool.
+    Forge.py isn't on PyPI. Install it from GitHub as a uv tool.
 
     ```bash
     uv tool install git+https://github.com/apollogeddon/forgepy
     ```
 
--   __02 · Initialise__
+-   __02 · Scaffold__
 
     ---
 
-    Run the CLI to scaffold configs and inject standard tasks.
+    Run `init` in your project to write the configs, tasks and CI workflow.
 
     ```bash
     forgepy init
     ```
 
--   __03 · Extend__
+-   __03 · Set up__
 
     ---
 
-    Inherit best practices by extending the vendored ruff config.
+    Install the toolchain and the Git hooks.
 
-    ```toml
-    # ruff.toml
-    extend = ".forgepy/ruff.toml"
+    ```bash
+    uv sync
+    uv run poe hooks
     ```
 
 </div>
 
-## The Toolchain { .fp-section-title }
+## The toolchain { .fp-section-title }
 
 <div class="grid cards fp-cols-4" markdown>
 
@@ -99,7 +99,7 @@ hide:
 
     ---
 
-    Replaces mypy, plain pyright
+    Replaces mypy, Pyright
 
 -   __uv__ · Rust
 
@@ -113,7 +113,7 @@ hide:
 
     Replaces unittest, nose
 
--   __poethepoet__ · Python
+-   __Poe the Poet__ · Python
 
     ---
 
@@ -125,7 +125,7 @@ hide:
 
     Replaces manual pre-commit checks
 
--   __commitizen__ · Python
+-   __Commitizen__ · Python
 
     ---
 
