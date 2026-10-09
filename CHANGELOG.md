@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.2](https://github.com/Apollogeddon/forgepy/compare/v0.4.1...v0.4.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* **ci:** keep counting releases_created for a root package, where release_created can be unset ([fe729b9](https://github.com/Apollogeddon/forgepy/commit/fe729b9382dfcfe3390bf41dba089bae80a45314))
+* **ci:** use working_directory in version.yml ([3ccec71](https://github.com/Apollogeddon/forgepy/commit/3ccec71b668a918b9fb84cd23cb0694abf8d6c12))
+* **ci:** use working_directory in version.yml ([85ddec1](https://github.com/Apollogeddon/forgepy/commit/85ddec1a550a7ad7e153fd6cc5c3f3dc9d9af176))
+
+
+### Documentation
+
+* correct and tidy the README, security policy and docs site ([d973228](https://github.com/Apollogeddon/forgepy/commit/d973228c5b690847e6397cee6e0ead4ce91f4dd3))
+* correct and tidy the README, security policy and docs site ([8a47412](https://github.com/Apollogeddon/forgepy/commit/8a474121803fe2ce3480c0631669229981b3755d))
+
 ## [0.4.1](https://github.com/Apollogeddon/forgepy/compare/v0.4.0...v0.4.1) (2026-10-08)
 
 
