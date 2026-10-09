@@ -6,13 +6,11 @@
 ### Bug Fixes
 
 * **ci:** keep counting releases_created for a root package, where release_created can be unset ([fe729b9](https://github.com/Apollogeddon/forgepy/commit/fe729b9382dfcfe3390bf41dba089bae80a45314))
-* **ci:** use working_directory in version.yml ([3ccec71](https://github.com/Apollogeddon/forgepy/commit/3ccec71b668a918b9fb84cd23cb0694abf8d6c12))
 * **ci:** use working_directory in version.yml ([85ddec1](https://github.com/Apollogeddon/forgepy/commit/85ddec1a550a7ad7e153fd6cc5c3f3dc9d9af176))
 
 
 ### Documentation
 
-* correct and tidy the README, security policy and docs site ([d973228](https://github.com/Apollogeddon/forgepy/commit/d973228c5b690847e6397cee6e0ead4ce91f4dd3))
 * correct and tidy the README, security policy and docs site ([8a47412](https://github.com/Apollogeddon/forgepy/commit/8a474121803fe2ce3480c0631669229981b3755d))
 
 ## [0.4.1](https://github.com/Apollogeddon/forgepy/compare/v0.4.0...v0.4.1) (2026-10-08)
@@ -20,7 +18,6 @@
 
 ### Bug Fixes
 
-* **ci:** leave Dependabot's GitHub Actions updates for a person to merge ([50cead3](https://github.com/Apollogeddon/forgepy/commit/50cead34687ec160a494c98d1a659ffaad21dcfa))
 * **ci:** leave Dependabot's GitHub Actions updates for a person to merge ([27d8ba7](https://github.com/Apollogeddon/forgepy/commit/27d8ba726b525f3466dfc2037e1a6d53ab2670d7))
 
 ## [0.4.0](https://github.com/Apollogeddon/forgepy/compare/v0.3.2...v0.4.0) (2026-10-08)
@@ -28,13 +25,11 @@
 
 ### Features
 
-* scaffold projects whose scripts run on Jython 2.7 ([b23ef1a](https://github.com/Apollogeddon/forgepy/commit/b23ef1a74eb31626ea4db8e277f3387a4cda0e9d))
 * scaffold projects whose scripts run on Jython 2.7 ([e594bba](https://github.com/Apollogeddon/forgepy/commit/e594bba3b7c04b61df7e0134bc1759e153fbcdbe))
 
 
 ### Bug Fixes
 
-* target a Jython project's tests at the project's Python ([f6f73da](https://github.com/Apollogeddon/forgepy/commit/f6f73da3e8ed7baffbc304b56a85a85d1a91c0d7))
 * target a Jython project's tests at the project's Python ([56ad4b8](https://github.com/Apollogeddon/forgepy/commit/56ad4b858549a2e8d9a19e1755718f96f444f273))
 
 ## [0.3.2](https://github.com/Apollogeddon/forgepy/compare/v0.3.1...v0.3.2) (2026-10-08)
@@ -42,7 +37,6 @@
 
 ### Bug Fixes
 
-* auto-merge a Dependabot PR that only waits on checks nobody requires ([9a57760](https://github.com/Apollogeddon/forgepy/commit/9a57760b19a36632ef9e3c5b98aaa4945d048239))
 * auto-merge a Dependabot PR that only waits on checks nobody requires ([512f56b](https://github.com/Apollogeddon/forgepy/commit/512f56bf578ed539290df4a8c3b62c5724b7b946))
 
 ## [0.3.1](https://github.com/Apollogeddon/forgepy/compare/v0.3.0...v0.3.1) (2026-10-08)
@@ -50,7 +44,6 @@
 
 ### Bug Fixes
 
-* auto-merge Dependabot PRs through the API, so a runner needs no gh CLI ([648b71f](https://github.com/Apollogeddon/forgepy/commit/648b71f92a2d5b95131e7c53d496127da139f9d8))
 * auto-merge Dependabot PRs through the API, so a runner needs no gh CLI ([49420a0](https://github.com/Apollogeddon/forgepy/commit/49420a02e6683280951dec3f79507154a1acf287))
 
 ## [0.3.0](https://github.com/Apollogeddon/forgepy/compare/v0.2.0...v0.3.0) (2026-10-08)
@@ -68,7 +61,6 @@
 * **ci:** add timeouts to the release-please and pages deploy jobs ([e6f8da3](https://github.com/Apollogeddon/forgepy/commit/e6f8da3f9b8dac6414701333e8ceb777867230ac))
 * **ci:** don't leave the token in .git/config for jobs that never push ([793eae0](https://github.com/Apollogeddon/forgepy/commit/793eae08205ec8746d7edc63a4e5430a765308d4))
 * **ci:** harden the reusable workflows and the generated ci ([327e98a](https://github.com/Apollogeddon/forgepy/commit/327e98a392ba2f2e16ec9977788b6899a0e9e0cc))
-* **deps:** bump the dependencies group across 1 directory with 2 updates ([5032674](https://github.com/Apollogeddon/forgepy/commit/5032674c293d8cb14834ed7137adb8ee66e7fcdf))
 * **deps:** bump the dependencies group across 1 directory with 2 updates ([797e472](https://github.com/Apollogeddon/forgepy/commit/797e4720953c91c407812edb54800ed49c563f83))
 * generate ci with a concurrency rule and without secrets: inherit ([91060d6](https://github.com/Apollogeddon/forgepy/commit/91060d6303bb4c8f1cfd2fe42bac1914db3b6447))
 
@@ -76,7 +68,6 @@
 ### Documentation
 
 * fix the test_on_push example and say what --website scaffolds ([d277e2e](https://github.com/Apollogeddon/forgepy/commit/d277e2e9f2d774112f8b3268d598fa54d7358c0b))
-* link the README logo to the docs site ([6ce6cc5](https://github.com/Apollogeddon/forgepy/commit/6ce6cc5901eb89eb96c03988a0cdc88eb16bf8cc))
 * link the README logo to the docs site ([af4b426](https://github.com/Apollogeddon/forgepy/commit/af4b426d437642da1a456784deb286dc7041c1d6))
 * point the test_on_push example at forgepy's own service workflow ([c2c7f22](https://github.com/Apollogeddon/forgepy/commit/c2c7f22f88f5edf52b03928379cf85e2af91b0af))
 * say that --website is a documentation site, not a frontend app ([f3e5b93](https://github.com/Apollogeddon/forgepy/commit/f3e5b931fd274f73f99b0b96a8be1f3e90336334))
@@ -123,9 +114,7 @@
 * contain tomlkit's untyped API and resolve strict pyright errors ([499d6a0](https://github.com/Apollogeddon/forgepy/commit/499d6a07fec7b3b32f660cae3dfde03ec1c53539))
 * create placeholder test file so pyrightconfig include path resolves ([9ebe005](https://github.com/Apollogeddon/forgepy/commit/9ebe0054d7596041ee4838ca79710c4daa4cd8cf))
 * Debian packaging produced an unversioned, non-portable .deb ([11ba39d](https://github.com/Apollogeddon/forgepy/commit/11ba39daead7619ffc08fe51326f492eb4d540d9))
-* **deps:** bump ruff from 0.16.9 to 0.16.10 in the dependencies group ([2d8c892](https://github.com/Apollogeddon/forgepy/commit/2d8c8924382c9ceb926536ff2b01ec9125be4395))
 * **deps:** bump ruff from 0.16.9 to 0.16.10 in the dependencies group ([6af8185](https://github.com/Apollogeddon/forgepy/commit/6af81856348ce72e546787e75c2524ef41054a7a))
-* **deps:** update uv-build requirement from &lt;0.9,&gt;=0.7 to &gt;=0.7,&lt;0.13 ([d2a7598](https://github.com/Apollogeddon/forgepy/commit/d2a7598c5444241b18628a96efc0fd2e6a75732f))
 * **deps:** update uv-build requirement from &lt;0.9,&gt;=0.7 to &gt;=0.7,&lt;0.13 ([cf767af](https://github.com/Apollogeddon/forgepy/commit/cf767af655bfa72e6cef5d5eb370f257419dbae5))
 * **docker:** run the backend image as non-root and make the uv version a build arg ([fe26af3](https://github.com/Apollogeddon/forgepy/commit/fe26af3b9d8bdfce5cbc885908d5722c831674f8))
 * gate auto-merge on the testing job so it can't merge a failing PR ([0095055](https://github.com/Apollogeddon/forgepy/commit/00950552533bec0c8945638f79b85cfcb0ba76f1))
