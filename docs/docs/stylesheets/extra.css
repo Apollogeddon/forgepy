@@ -1,20 +1,20 @@
-/* Tailwind orange (the logo's own gradient) on a zinc-950 base */
+/* Tailwind green (the logo's own gradient) on a zinc-950 base */
 [data-md-color-scheme="slate"] {
-  --fp-orange-300: #fdba74;
-  --fp-orange-400: #fb923c;
-  --fp-orange-500: #f97316;
-  --fp-orange-600: #ea580c;
-  --fp-orange-700: #c2410c;
+  --fp-green-300: #86efac;
+  --fp-green-400: #4ade80;
+  --fp-green-500: #22c55e;
+  --fp-green-600: #16a34a;
+  --fp-green-700: #15803d;
 
   --md-default-bg-color: #09090b;
   --md-default-fg-color--light: #a1a1aa;
   --md-typeset-color: #d4d4d8;
-  --md-primary-fg-color: var(--fp-orange-500);
-  --md-primary-fg-color--light: var(--fp-orange-400);
-  --md-primary-fg-color--dark: var(--fp-orange-700);
+  --md-primary-fg-color: var(--fp-green-500);
+  --md-primary-fg-color--light: var(--fp-green-400);
+  --md-primary-fg-color--dark: var(--fp-green-700);
   --md-primary-bg-color: #fafafa;
-  --md-accent-fg-color: var(--fp-orange-400);
-  --md-typeset-a-color: var(--fp-orange-400);
+  --md-accent-fg-color: var(--fp-green-400);
+  --md-typeset-a-color: var(--fp-green-400);
   --md-code-bg-color: #18181b;
   --md-footer-bg-color: #09090b;
   --md-footer-bg-color--dark: #09090b;
@@ -37,16 +37,16 @@
 }
 
 .md-typeset :not(pre) > code {
-  color: var(--fp-orange-300);
+  color: var(--fp-green-300);
 }
 
 .md-typeset blockquote {
-  border-left-color: var(--fp-orange-500);
+  border-left-color: var(--fp-green-500);
 }
 
 .md-nav__link--active,
 .md-nav__link:hover {
-  color: var(--fp-orange-400);
+  color: var(--fp-green-400);
 }
 
 /* Home hero */
@@ -65,7 +65,7 @@
   height: 35rem;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: rgba(249, 115, 22, 0.2);
+  background: rgba(34, 197, 94, 0.2);
   opacity: 0.3;
   filter: blur(130px);
   pointer-events: none;
@@ -90,7 +90,7 @@
   width: 0.375rem;
   height: 0.375rem;
   border-radius: 50%;
-  background: var(--fp-orange-400);
+  background: var(--fp-green-400);
   animation: fp-pulse 2s ease-in-out infinite;
 }
 
@@ -120,15 +120,16 @@
   font-size: 0.95rem;
 }
 
+/* green-700 keeps white button text above 4.5:1 (green-600 is only 3.3:1) */
 .md-typeset .md-button--primary {
-  background-color: var(--fp-orange-600);
-  border-color: var(--fp-orange-600);
+  background-color: var(--fp-green-700);
+  border-color: var(--fp-green-700);
   color: #fff;
 }
 
 .md-typeset .md-button--primary:hover {
-  background-color: var(--fp-orange-500);
-  border-color: var(--fp-orange-500);
+  background-color: var(--fp-green-600);
+  border-color: var(--fp-green-600);
 }
 
 .md-typeset .md-button:not(.md-button--primary) {
@@ -142,11 +143,11 @@
 }
 
 .md-typeset .grid.cards > ul > li:hover {
-  border-color: rgba(249, 115, 22, 0.4);
+  border-color: rgba(34, 197, 94, 0.4);
 }
 
 .md-typeset .grid.cards .fp-icon {
-  color: var(--fp-orange-400);
+  color: var(--fp-green-400);
 }
 
 .md-typeset .fp-section-title {
