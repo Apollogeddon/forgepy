@@ -134,8 +134,15 @@ def test_version_reads_the_working_directory_release_config():
 def test_version_reads_the_working_directory_package_outputs(key: str):
     """release-please prefixes a sub-directory package's outputs with its path."""
     assert f"format('{{0}}--{key}', inputs.working_directory)" in _version_job()["outputs"][key]
-    # releases_created is true when any package is released, not just this one
-    assert "releases_created" not in (WORKFLOWS_DIR / "version.yml").read_text(encoding="utf-8")
+
+
+def test_version_counts_any_package_release_only_for_the_root_package():
+    """releases_created is true when any package is released, not just this one."""
+    workflow = yaml.safe_load((WORKFLOWS_DIR / "version.yml").read_text(encoding="utf-8"))
+    published = workflow[True]["workflow_call"]["outputs"]["new_release_published"]["value"]
+    before_root_clause, root_clause = published.split("inputs.working_directory == '.' && ", 1)
+    assert "releases_created" not in before_root_clause
+    assert root_clause.startswith("(jobs.release-please.outputs.releases_created")
 
 
 def test_generated_jython_workflow_inputs_are_declared():
