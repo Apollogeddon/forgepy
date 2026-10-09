@@ -1,5 +1,6 @@
 ---
 title: Quality tooling, zero configuration drift
+home: true
 hide:
   - navigation
   - toc
@@ -11,7 +12,7 @@ hide:
 
 # Quality tooling,<br>zero configuration drift.
 
-<p class="fp-lead">Forge.py is a command-line tool that scaffolds linting, type checking, testing, releases and GitHub Actions CI into uv-managed Python projects, and keeps their Ruff, basedpyright and pytest setup in one place.</p>
+<p class="fp-lead">Reusable GitHub Actions workflows and tooling configurations for Python projects. Keep your Ruff, basedpyright and pytest setup in one place, and scaffold projects with one command.</p>
 
 <div class="fp-buttons" markdown>
 
@@ -25,31 +26,31 @@ hide:
 <pre><code><span class="fp-prompt">$ </span>uv tool install git+https://github.com/apollogeddon/forgepy
 <span class="fp-prompt">$ </span>forgepy init
 <span class="fp-ok">✓ Configuration files created</span>
-<span class="fp-ok">✓ forgepy init complete</span>
-<span class="fp-next">  Next steps: uv sync &amp;&amp; uv run poe hooks</span></code></pre>
+<span class="fp-ok">✓ Poe tasks added</span>
+<span class="fp-next">  Forge.py ready.</span></code></pre>
 </div>
 
 </div>
 
 ## Why Forge.py { .fp-section-title }
 
-<p class="fp-section-lead">The tooling and CI/CD a Python project needs, in one command.</p>
+<p class="fp-section-lead">The tooling and CI/CD a Python project needs, in one tool.</p>
 
 <div class="grid cards fp-cols-2" markdown>
 
--   :material-tune-variant:{ .fp-icon } __Shared tool configs__
+-   :lucide-settings:{ .fp-icon } __Standardised tooling__
 
-    Every project extends the same Ruff and basedpyright base configs, and `forgepy sync` keeps them current.
+    Shared Ruff and basedpyright configs give every project the same checks from day one, and `forgepy sync` keeps them current.
 
--   :material-source-branch-sync:{ .fp-icon } __Reusable workflows__
+-   :lucide-workflow:{ .fp-icon } __Reusable workflows__
 
-    GitHub Actions workflows for checks, builds, releases and delivery. `forgepy init` generates the caller for your project.
+    GitHub Actions workflows for testing, building, releasing and deploying. `init` writes the workflow that calls them.
 
--   :material-folder-plus-outline:{ .fp-icon } __Project scaffolding__
+-   :lucide-rocket:{ .fp-icon } __Project scaffolding__
 
-    `forgepy init` sets up a backend, library or documentation site, with optional Docker and Debian packaging.
+    `init` sets up a backend, library or website, with optional Docker and Debian packaging and no boilerplate to copy.
 
--   :material-tag-arrow-up-outline:{ .fp-icon } __Automated releases__
+-   :lucide-tag:{ .fp-icon } __Automated releases__
 
     release-please derives versions and changelogs from Conventional Commits, and the pipeline publishes each release.
 
@@ -67,7 +68,7 @@ hide:
 
 __Install__
 
-Forge.py isn't on PyPI. Install it from GitHub as a uv tool.
+Install Forge.py from GitHub as a uv tool.
 
 ```bash
 uv tool install git+https://github.com/apollogeddon/forgepy
@@ -80,9 +81,9 @@ uv tool install git+https://github.com/apollogeddon/forgepy
 <div class="fp-step-n">02</div>
 <div markdown>
 
-__Scaffold__
+__Initialise__
 
-Run `init` in your project to write the configs, tasks and CI workflow.
+Run the CLI to scaffold configs, tasks and the CI workflow.
 
 ```bash
 forgepy init
@@ -95,13 +96,14 @@ forgepy init
 <div class="fp-step-n">03</div>
 <div markdown>
 
-__Set up__
+__Extend__
 
-Install the toolchain and the Git hooks.
+The generated configs extend the shared ones. Add project-specific settings alongside.
 
-```bash
-uv sync
-uv run poe hooks
+```toml
+# ruff.toml
+extend = ".forgepy/ruff.toml"
+target-version = "py313"
 ```
 
 </div>
@@ -113,7 +115,7 @@ uv run poe hooks
 
 ## The toolchain { .fp-section-title }
 
-<p class="fp-section-lead">Fast, modern tools behind one set of poe tasks.</p>
+<p class="fp-section-lead">Fast tools, pinned by Forge.py and run through poe tasks.</p>
 
 <div class="grid cards fp-cols-4 fp-tools" markdown>
 
@@ -121,32 +123,32 @@ uv run poe hooks
 
     Replaces Flake8, isort, Black
 
--   __basedpyright__ <span class="fp-chip fp-chip--js">Node</span>
-
-    Replaces mypy, Pyright
-
--   __uv__ <span class="fp-chip fp-chip--rust">Rust</span>
-
-    Replaces pip, venv, Poetry
-
 -   __pytest__ <span class="fp-chip fp-chip--python">Python</span>
 
     Replaces unittest, nose
 
--   __Poe the Poet__ <span class="fp-chip fp-chip--python">Python</span>
+-   __basedpyright__ <span class="fp-chip fp-chip--js">Node</span>
 
-    Replaces Makefiles, ad-hoc scripts
+    Replaces mypy, Pyright
 
 -   __pre-commit__ <span class="fp-chip fp-chip--python">Python</span>
 
-    Replaces manual pre-commit checks
+    Replaces hand-written Git hooks
+
+-   __release-please__ <span class="fp-chip fp-chip--js">JS</span>
+
+    Replaces manual tagging
 
 -   __Commitizen__ <span class="fp-chip fp-chip--python">Python</span>
 
     Replaces manual commit review
 
--   __release-please__ <span class="fp-chip fp-chip--js">JS</span>
+-   __uv__ <span class="fp-chip fp-chip--rust">Rust</span>
 
-    Replaces manual tagging and changelogs
+    Replaces pip, venv, Poetry
+
+-   __Poe the Poet__ <span class="fp-chip fp-chip--python">Python</span>
+
+    Replaces Makefiles
 
 </div>

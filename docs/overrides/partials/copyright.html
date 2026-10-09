@@ -1,0 +1,12 @@
+{#- The forge sites' shared footer: logo, copyright and repository link -#}
+<div class="fp-footer">
+  <a href="{{ config.site_url }}" class="fp-footer-brand">
+    <img src="{{ config.theme.logo | url }}" alt="" width="28" height="28">
+    <span>{{ config.site_name }}</span>
+  </a>
+  <p>{{ config.copyright }}</p>
+  <a href="{{ config.repo_url }}" class="fp-footer-repo" target="_blank" rel="noopener noreferrer">
+    {% include ".icons/fontawesome/brands/github.svg" %}
+    apollogeddon/forgepy
+  </a>
+</div>

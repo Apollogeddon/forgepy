@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{#- "Site · tagline" on the home page and "Page · Site" elsewhere, as on the other forge sites -#}
+{% block htmltitle %}
+  {% if page.meta and page.meta.home is defined %}
+    <title>{{ config.site_name }} · {{ page.meta.title }}</title>
+  {% elif page.meta and page.meta.title %}
+    <title>{{ page.meta.title }} · {{ config.site_name }}</title>
+  {% elif page.title %}
+    <title>{{ page.title | striptags }} · {{ config.site_name }}</title>
+  {% else %}
+    <title>{{ config.site_name }}</title>
+  {% endif %}
+{% endblock %}
