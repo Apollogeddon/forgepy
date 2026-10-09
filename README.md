@@ -7,7 +7,7 @@
   <h3 align="center">Forge.py</h3>
 
   <p align="center">
-    Quality tooling and CI/CD for Python projects, scaffolded with one command.
+    Reusable GitHub Actions workflows and tooling configurations for Python projects
     <br />
     <a href="https://apollogeddon.github.io/forgepy/"><strong>Read the docs</strong></a>
     <br />
@@ -22,7 +22,13 @@
 
 <br />
 
-Forge.py (`forgepy`) is a command-line tool that sets up linting, type checking, testing, Git hooks, releases and GitHub Actions CI in a uv-managed Python project. It is for teams that want every repository to use the same toolchain and configuration, and to upgrade it in one place.
+Forge.py (`forgepy`) is a project-scaffolding CLI for Python. Its `init` command sets up a uv-managed backend, library or website with a standard toolchain (Ruff, basedpyright, pytest, pre-commit, Commitizen, release-please) and a GitHub Actions pipeline built from reusable workflows. It keeps your Ruff, basedpyright and pytest setup in one place: the generated configs extend a shared base that `forgepy sync` keeps current, so every project stays on the same rules.
+
+## Requirements
+
+- [uv](https://docs.astral.sh/uv/): Forge.py generates uv-managed projects, and every task runs through `uv run`
+- Python 3.13, or the version you pass to `--python`; uv can install it for you
+- Git, for the generated pre-commit hooks
 
 ## Installation
 
@@ -66,7 +72,7 @@ Add `--jython` to a backend for scripts that run on Jython 2.7, or `--docker` an
 
 It is safe to re-run: existing files and tasks are left alone unless you pass `--force`, and your own source code is never overwritten.
 
-## Toolchain
+## The toolchain
 
 | Category | Tool |
 | :--- | :--- |
@@ -98,7 +104,13 @@ uv run forgepy sync
 
 ## Documentation
 
-The full documentation is at [apollogeddon.github.io/forgepy](https://apollogeddon.github.io/forgepy/).
+The full documentation is at [apollogeddon.github.io/forgepy](https://apollogeddon.github.io/forgepy/):
+
+- [Getting started](https://apollogeddon.github.io/forgepy/getting-started/): requirements, CLI flags and generated tasks.
+- [Configuration](https://apollogeddon.github.io/forgepy/configuration/): the files Forge.py writes and how to change them.
+- [Examples](https://apollogeddon.github.io/forgepy/examples/): common configuration and workflow recipes.
+- [Workflows](https://apollogeddon.github.io/forgepy/workflows/overview/): the reusable GitHub Actions workflows and their inputs.
+- [Migration](https://apollogeddon.github.io/forgepy/migration/): adopting Forge.py in a project that already has tooling.
 
 ## License
 
