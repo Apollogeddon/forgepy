@@ -1,21 +1,31 @@
 ---
-title: Getting Started
-description: Install Forge.py and bootstrap a project with the init CLI.
+title: Getting started
+description: Install Forge.py and scaffold a project with forgepy init.
 ---
 
-# Getting Started
+# Getting started
+
+This page shows you how to install Forge.py, scaffold a project with `forgepy init`, and which tasks and flags it provides.
 
 ## Requirements
 
-- [uv](https://docs.astral.sh/uv/) — Forge.py generates uv-managed projects and its tasks run through `uv run`.
-- Python 3.13 (or the version you pass to `--python`).
-- Git, for the generated pre-commit hooks.
+- [uv](https://docs.astral.sh/uv/). Forge.py generates uv-managed projects, and every task runs through `uv run`.
+- Python 3.13, or the version you pass to `--python`. uv can install it for you.
+- Git, for the pre-commit hooks.
 
-## Setup Guide
+Some optional tasks call tools that uv doesn't install. Put them on your `PATH` if you use those tasks:
 
-### 1. Installation
+| Tool | Needed by |
+| :--- | :--- |
+| [OSV-Scanner](https://google.github.io/osv-scanner/) | The `security` task |
+| [Docker](https://docs.docker.com/get-docker/) | The `docker-build` and `docker-run` tasks (`--docker`) |
+| [nFPM](https://nfpm.goreleaser.com/) | The `build-deb` task (`--debian`) |
 
-forgepy isn't published to PyPI yet, so install it from GitHub:
+CI installs these tools itself.
+
+## Install
+
+Forge.py isn't published to PyPI. Install it from GitHub as a uv tool:
 
 ```bash
 uv tool install git+https://github.com/apollogeddon/forgepy
@@ -27,13 +37,13 @@ Or run it once without installing:
 uvx --from git+https://github.com/apollogeddon/forgepy forgepy init
 ```
 
-### 2. Initialisation
+## Scaffold a project
 
 Run `init` in an existing project, or in an empty directory to start a new one:
 
 ```bash
-forgepy init            # Python service/application (default)
-forgepy init --library  # publishable PyPI package
+forgepy init            # Python service or application (default)
+forgepy init --library  # package published to PyPI
 forgepy init --website  # static documentation site (Zensical)
 ```
 
@@ -44,82 +54,92 @@ uv sync
 uv run poe hooks
 ```
 
+The generated `pyproject.toml` adds `forgepy[toolchain]` to the `dev` dependency group and points `[tool.uv.sources]` at the Forge.py Git repository, so `uv sync` installs Forge.py and its tools into the project's virtual environment.
+
 `init` is safe to re-run. It creates missing files and tasks, and leaves anything that already exists alone.
 
-### 3. Advanced: Overwriting Files
+### Overwrite existing files
 
-Pass `--force` to overwrite existing config files and tasks with the Forge.py defaults:
+Pass `--force` to replace existing config files and tasks with the Forge.py defaults:
 
 ```bash
+forgepy init --dry-run --force   # preview
 forgepy init --force
 ```
 
-`--force` never touches your own source code: the starter `src/<package>/__init__.py`, `__main__.py` and `tests/test_placeholder.py` are only ever created when missing. Use `--dry-run` first to see exactly what would change.
+`--force` never touches your own source code: the starter `src/<package>/__init__.py`, `__main__.py` and `tests/test_placeholder.py` are only created when missing. With `--force`, `init` also deletes the files of a feature you have turned off, such as `pytest.toml` after `--no-testing`.
 
-## Injected Tasks
+## Tasks
 
-Forge.py adds [poethepoet](https://poethepoet.natn.io/) tasks to `[tool.poe.tasks]` in `pyproject.toml`. Run them with `uv run poe <task>`.
+Forge.py adds [Poe the Poet](https://poethepoet.natn.io/) tasks to `[tool.poe.tasks]` in `pyproject.toml`. Run them with `uv run poe <task>`.
 
 | Task | Command | Added when |
 | :--- | :--- | :--- |
-| `lint` | `ruff check --fix . && ruff format .` | linting on |
-| `format` | `ruff format .` | linting on |
-| `type` | `basedpyright` | always |
-| `security` | `osv-scanner scan -r .` | linting on |
-| `hooks` | `pre-commit install` | linting on |
-| `sync-check` | `forgepy sync --check` | linting on |
-| `compat` | `vermin --target=2.7- ... src && forgepy check-jython src`: fails on syntax or modules Jython 2.7 lacks | `--jython` |
-| `test` | `pytest` | testing on |
-| `build` | `uv build` (`zensical build` for websites) | not `--jython` |
-| `start` | `python -m <package>` | `--backend` |
-| `watch` | `watchmedo auto-restart -- python -m <package>` | `--backend` |
+| `lint` | `ruff check --fix . && ruff format .` | Linting on |
+| `format` | `ruff format .` | Linting on |
+| `type` | `basedpyright` | Always |
+| `security` | `osv-scanner scan -r .` | Linting on |
+| `hooks` | `pre-commit install` | Linting on |
+| `sync-check` | `forgepy sync --check` | Linting on |
+| `compat` | `vermin --target=2.7- ... src && forgepy check-jython src`, which fails on syntax or modules Jython 2.7 lacks | `--jython` |
+| `test` | `pytest` | Testing on |
+| `build` | `uv build` (`zensical build` for websites) | Not `--jython` |
+| `start` | `python -m <package>` | `--backend`, not `--jython` |
+| `watch` | `watchmedo auto-restart -- python -m <package>` | `--backend`, not `--jython` |
 | `check-dist` | `validate-pyproject pyproject.toml` | `--library` |
 | `dev` | `zensical serve` | `--website` |
-| `docker-build` / `docker-run` | `docker build` / `docker run` for the project image | `--docker` |
-| `build-deb` | builds a relocatable venv and packages it with nfpm | `--debian` |
+| `docker-build`, `docker-run` | `docker build` and `docker run` for the project image | `--docker` |
+| `build-deb` | Builds a relocatable virtual environment and packages it with nFPM | `--debian` |
 
-Existing tasks with the same name are kept unless you pass `--force`.
+An existing task with the same name is kept unless you pass `--force`.
 
-## CLI Options
+## CLI options
 
 ```text
 forgepy init [options]
-forgepy sync [--check]
+forgepy sync [--check] [-C DIR]
 forgepy check-jython PATH...
+forgepy --version
 ```
+
+### `forgepy init`
 
 | Option | Description |
 | :--- | :--- |
-| `--backend` | Python service/application (default). |
-| `--library` | Publishable PyPI package. |
-| `--website` | Static documentation site built with [Zensical](https://zensical.org/). |
-| `--testing` / `--no-testing` | pytest + coverage (default: on). |
-| `--linting` / `--no-linting` | Ruff + basedpyright + pre-commit (default: on). |
-| `--versioning` / `--no-versioning` | release-please + commitizen (default: on). |
-| `--all` / `--no-all` | Enable or disable every standard feature at once; an explicit flag such as `--testing` still wins. |
-| `--docker` | Add a `Dockerfile` and container CI (not available for `--library`). |
-| `--debian` | Add nfpm-based `.deb` packaging (`--backend` only). |
-| `--jython` | Scripts that run on Jython 2.7: no packaging, lint rules that keep Python 2 syntax, and a vermin compatibility check (`--backend` only; needs linting, and can't be combined with `--docker` or `--debian`). See [Jython projects](configuration.md#jython-projects). |
-| `--force` | Overwrite existing config files and tasks. |
+| `--backend` | Python service or application (default). |
+| `--library` | Package published to PyPI. |
+| `--website` | Static documentation site built with [Zensical](https://zensical.org/). This is a docs site, not a frontend application mode. |
+| `--testing`, `--no-testing` | pytest and coverage (default: on). |
+| `--linting`, `--no-linting` | Ruff, basedpyright and pre-commit (default: on). |
+| `--versioning`, `--no-versioning` | release-please and Commitizen (default: on). |
+| `--all`, `--no-all` | Turn every standard feature on or off at once. An explicit flag such as `--testing` still wins. |
+| `--docker` | Add a `Dockerfile` and a container CI job. Not available with `--library`. |
+| `--debian` | Add nFPM-based `.deb` packaging. `--backend` only. |
+| `--jython` | Scripts that run on Jython 2.7: no packaging, lint rules that keep Python 2 syntax, and a vermin compatibility check. `--backend` only; needs linting, and can't be combined with `--docker` or `--debian`. See [Jython projects](configuration.md#jython-projects). |
+| `--force` | Overwrite existing config files and tasks, and remove the files of features you turned off. |
 | `--dry-run` | Show what would change without writing anything. |
 | `--python VERSION` | Target Python version (default: `3.13`). |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
-`--website` scaffolds a static documentation site. There is no frontend application mode.
+`--no-testing` and `--no-versioning` also turn off the matching jobs in the generated CI workflow.
 
-`--no-testing` and `--no-versioning` also switch off the matching step in the generated CI workflow.
+### `forgepy sync`
 
-`forgepy sync` refreshes the managed base configs under `.forgepy/` — see [Configuration](configuration.md#managed-configs). `forgepy check-jython` is the part of a `--jython` project's `compat` task that vermin can't do — see [Jython projects](configuration.md#jython-projects).
+Refreshes the managed base configs under `.forgepy/` from the installed version of Forge.py. `--check` reports drift without writing anything and exits with status `1` if any file is out of date. `-C DIR` sets the project directory. See [Managed configs](configuration.md#managed-configs).
 
-## Project Structure
+### `forgepy check-jython`
+
+Reports a comma after `*args` or `**kwargs`, which Ruff's formatter can add and Jython 2.7 rejects. It is the part of a `--jython` project's `compat` task that vermin can't do. See [Jython projects](configuration.md#jython-projects).
+
+## Project structure
 
 A default `forgepy init` (backend) produces:
 
 ```text
 .
 ├── .forgepy/
-│   ├── pyrightconfig.json      # managed base config — refreshed by `forgepy sync`
-│   └── ruff.toml               # managed base config — refreshed by `forgepy sync`
+│   ├── pyrightconfig.json      # managed base config, refreshed by `forgepy sync`
+│   └── ruff.toml               # managed base config, refreshed by `forgepy sync`
 ├── .github/
 │   ├── .release.json           # release-please manifest
 │   ├── release.json            # release-please config
@@ -136,4 +156,10 @@ A default `forgepy init` (backend) produces:
 └── ruff.toml                   # extends .forgepy/ruff.toml
 ```
 
-`--library` omits `__main__.py`; `--website` replaces `src/` with `mkdocs.yml` and `docs/index.md`. `--docker` adds `Dockerfile` and `.dockerignore`, and `--debian` adds `nfpm.yaml` and a `packaging/` directory. `--jython` replaces `src/<package>/` with a starter `src/hello.py` and adds `.forgepy/ruff-jython.toml`.
+Other modes and features change this layout:
+
+- `--library` omits `__main__.py`.
+- `--website` replaces `src/` with `mkdocs.yml` and `docs/index.md`.
+- `--docker` adds `Dockerfile` and `.dockerignore`.
+- `--debian` adds `nfpm.yaml` and a `packaging/` directory.
+- `--jython` replaces `src/<package>/` with a starter `src/hello.py` and adds `.forgepy/ruff-jython.toml`.

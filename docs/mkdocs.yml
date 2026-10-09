@@ -50,13 +50,13 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Overview:
-      - Getting Started: getting-started.md
+      - Getting started: getting-started.md
       - Configuration: configuration.md
-      - Philosophy & Stack: philosophy.md
+      - Philosophy and stack: philosophy.md
       - Contributing: contributing.md
       - Migration: migration.md
   - Reference:
       - Examples: examples.md
       - Workflows:
           - Overview: workflows/overview.md
-          - Job Reference: workflows/reference.md
+          - Job reference: workflows/reference.md
