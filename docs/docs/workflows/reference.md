@@ -81,9 +81,9 @@ In that mode release-please tags the release before the push's checks run. If th
 
 *Manages the release lifecycle.*
 
-1. **`release-please`**: on the main branch, opens or updates the release PR from Conventional Commits, and creates the tag and GitHub release when it merges.
+1. **`release-please`**: on the main branch, opens or updates the release PR from Conventional Commits, and creates the tag and GitHub release when it merges. It reads `.github/release.json` and `.github/.release.json` under `working_directory`, so each project in a monorepo is released on its own (see [Projects in a subdirectory](../examples.md#projects-in-a-subdirectory)).
 
-Outputs `new_release_published`, `version` and `tag_name` for the delivery jobs.
+Outputs `new_release_published`, `version` and `tag_name` for the delivery jobs: those of the `working_directory` package, not of any other package released in the same run.
 
 ## merge.yml
 

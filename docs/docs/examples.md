@@ -69,7 +69,7 @@ check = ["lint", "type", "test"]   # runs the three in sequence
 
 ### Projects in a subdirectory
 
-Point a workflow at a subdirectory, for example in a monorepo, with `working_directory`:
+Point a workflow at a subdirectory, for example in a monorepo, with `working_directory`, given relative to the repository root without a leading `./` or trailing `/`:
 
 ```yaml
 jobs:
@@ -82,6 +82,30 @@ jobs:
       working_directory: 'services/api'
       python_version: '3.13'
 ```
+
+`version.yml` reads the project's own `services/api/.github/release.json` and `.release.json`, but release-please keys a package by its path from the repository root, so change the `"."` key in both to the subdirectory, and give the package a `component` so its tags and release PR don't collide with another project's:
+
+```json
+{
+  "packages": {
+    "services/api": {
+      "release-type": "python",
+      "component": "api",
+      "extra-files": [
+        { "type": "toml", "path": "uv.lock", "jsonpath": "$.package[?(@.name.value=='api')].version" }
+      ]
+    }
+  }
+}
+```
+
+```json
+{
+  "services/api": "0.1.0"
+}
+```
+
+release-please then only counts commits under `services/api`, bumps the version in its `pyproject.toml` and `uv.lock`, and tags its releases with the component (`api-v1.2.3`), so several projects in one repository are each released on their own.
 
 ### Testing across Python versions
 
