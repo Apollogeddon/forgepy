@@ -117,6 +117,27 @@ def test_pipelines_expose_release_outputs_for_docker_job(name: str):
     assert {"new_release_published", "version"} <= set(outputs)
 
 
+def _version_job() -> YamlDoc:
+    with (WORKFLOWS_DIR / "version.yml").open(encoding="utf-8") as f:
+        doc: YamlDoc = yaml.safe_load(f)
+    return doc["jobs"]["release-please"]
+
+
+def test_version_reads_the_working_directory_release_config():
+    """A project in a sub-directory keeps its release-please config in its own .github/."""
+    release = next(s for s in _version_job()["steps"] if s.get("uses", "").startswith("googleapis/release-please"))
+    for key, file in (("config-file", "release.json"), ("manifest-file", ".release.json")):
+        assert f"format('{{0}}/.github/{file}', inputs.working_directory)" in release["with"][key]
+
+
+@pytest.mark.parametrize("key", ["release_created", "version", "tag_name"])
+def test_version_reads_the_working_directory_package_outputs(key: str):
+    """release-please prefixes a sub-directory package's outputs with its path."""
+    assert f"format('{{0}}--{key}', inputs.working_directory)" in _version_job()["outputs"][key]
+    # releases_created is true when any package is released, not just this one
+    assert "releases_created" not in (WORKFLOWS_DIR / "version.yml").read_text(encoding="utf-8")
+
+
 def test_generated_jython_workflow_inputs_are_declared():
     rendered = workflow_templates.render(
         workflow_templates.SERVICE_WORKFLOW, python_version="3.13", inputs={"run_build": False}
