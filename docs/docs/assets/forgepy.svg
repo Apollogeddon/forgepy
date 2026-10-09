@@ -2,9 +2,9 @@
   <title>ForgePy</title>
   <defs>
     <linearGradient id="ag" x1="256" y1="115" x2="256" y2="444" gradientUnits="userSpaceOnUse">
-      <stop offset="0%"   stop-color="#FDBA74"/>
-      <stop offset="55%"  stop-color="#F97316"/>
-      <stop offset="100%" stop-color="#C2410C"/>
+      <stop offset="0%"   stop-color="#86EFAC"/>
+      <stop offset="55%"  stop-color="#22C55E"/>
+      <stop offset="100%" stop-color="#15803D"/>
     </linearGradient>
     <linearGradient id="fg" x1="271" y1="115" x2="271" y2="263" gradientUnits="userSpaceOnUse">
       <stop offset="0%"   stop-color="#FEF9C3"/>

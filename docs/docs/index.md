@@ -1,5 +1,6 @@
 ---
 title: Quality tooling, zero configuration drift
+home: true
 hide:
   - navigation
   - toc
@@ -11,38 +12,45 @@ hide:
 
 # Quality tooling,<br>zero configuration drift.
 
-<p>Forge.py is a command-line tool that scaffolds linting, type checking, testing, releases and GitHub Actions CI into uv-managed Python projects, and keeps their Ruff, basedpyright and pytest setup in one place.</p>
+<p class="fp-lead">Reusable GitHub Actions workflows and tooling configurations for Python projects. Keep your Ruff, basedpyright and pytest setup in one place, and scaffold projects with one command.</p>
 
-[Get Started :material-arrow-right:](getting-started.md){ .md-button .md-button--primary }
-[View on GitHub](https://github.com/Apollogeddon/forgepy){ .md-button }
+<div class="fp-buttons" markdown>
+
+[Get started :material-arrow-right:](getting-started.md){ .md-button .md-button--primary }
+[:fontawesome-brands-github: GitHub](https://github.com/Apollogeddon/forgepy){ .md-button }
+
+</div>
+
+<div class="fp-terminal">
+<div class="fp-terminal-bar"><span></span><span></span><span></span>bash</div>
+<pre><code><span class="fp-prompt">$ </span>uv tool install git+https://github.com/apollogeddon/forgepy
+<span class="fp-prompt">$ </span>forgepy init
+<span class="fp-ok">✓ Configuration files created</span>
+<span class="fp-ok">✓ Poe tasks added</span>
+<span class="fp-next">  Forge.py ready.</span></code></pre>
+</div>
 
 </div>
 
 ## Why Forge.py { .fp-section-title }
 
+<p class="fp-section-lead">The tooling and CI/CD a Python project needs, in one tool.</p>
+
 <div class="grid cards fp-cols-2" markdown>
 
--   :material-tune-variant:{ .lg .middle .fp-icon } __Shared tool configs__
+-   :lucide-settings:{ .fp-icon } __Standardised tooling__
 
-    ---
+    Shared Ruff and basedpyright configs give every project the same checks from day one, and `forgepy sync` keeps them current.
 
-    Every project extends the same Ruff and basedpyright base configs, and `forgepy sync` keeps them current.
+-   :lucide-workflow:{ .fp-icon } __Reusable workflows__
 
--   :material-source-branch-sync:{ .lg .middle .fp-icon } __Reusable workflows__
+    GitHub Actions workflows for testing, building, releasing and deploying. `init` writes the workflow that calls them.
 
-    ---
+-   :lucide-rocket:{ .fp-icon } __Project scaffolding__
 
-    GitHub Actions workflows for checks, builds, releases and delivery. `forgepy init` generates the caller for your project.
+    `init` sets up a backend, library or website, with optional Docker and Debian packaging and no boilerplate to copy.
 
--   :material-folder-plus-outline:{ .lg .middle .fp-icon } __Project scaffolding__
-
-    ---
-
-    `forgepy init` sets up a backend, library or documentation site, with optional Docker and Debian packaging.
-
--   :material-tag-arrow-up-outline:{ .lg .middle .fp-icon } __Automated releases__
-
-    ---
+-   :lucide-tag:{ .fp-icon } __Automated releases__
 
     release-please derives versions and changelogs from Conventional Commits, and the pipeline publishes each release.
 
@@ -50,91 +58,97 @@ hide:
 
 ## Quick start { .fp-section-title }
 
-<div class="grid cards" markdown>
+<p class="fp-section-lead">From empty repo to a standardised toolchain in three steps.</p>
 
--   __01 · Install__
+<div class="fp-steps" markdown>
 
-    ---
+<div class="fp-step" markdown>
+<div class="fp-step-n">01</div>
+<div markdown>
 
-    Forge.py isn't on PyPI. Install it from GitHub as a uv tool.
+__Install__
 
-    ```bash
-    uv tool install git+https://github.com/apollogeddon/forgepy
-    ```
+Install Forge.py from GitHub as a uv tool.
 
--   __02 · Scaffold__
+```bash
+uv tool install git+https://github.com/apollogeddon/forgepy
+```
 
-    ---
+</div>
+</div>
 
-    Run `init` in your project to write the configs, tasks and CI workflow.
+<div class="fp-step" markdown>
+<div class="fp-step-n">02</div>
+<div markdown>
 
-    ```bash
-    forgepy init
-    ```
+__Initialise__
 
--   __03 · Set up__
+Run the CLI to scaffold configs, tasks and the CI workflow.
 
-    ---
+```bash
+forgepy init
+```
 
-    Install the toolchain and the Git hooks.
+</div>
+</div>
 
-    ```bash
-    uv sync
-    uv run poe hooks
-    ```
+<div class="fp-step" markdown>
+<div class="fp-step-n">03</div>
+<div markdown>
+
+__Extend__
+
+The generated configs extend the shared ones. Add project-specific settings alongside.
+
+```toml
+# ruff.toml
+extend = ".forgepy/ruff.toml"
+target-version = "py313"
+```
+
+</div>
+</div>
 
 </div>
 
+<p class="fp-more"><a href="getting-started/">Full documentation →</a></p>
+
 ## The toolchain { .fp-section-title }
 
-<div class="grid cards fp-cols-4" markdown>
+<p class="fp-section-lead">Fast tools, pinned by Forge.py and run through poe tasks.</p>
 
--   __Ruff__ · Rust
+<div class="grid cards fp-cols-4 fp-tools" markdown>
 
-    ---
+-   __Ruff__ <span class="fp-chip fp-chip--rust">Rust</span>
 
     Replaces Flake8, isort, Black
 
--   __basedpyright__ · TS/Node
-
-    ---
-
-    Replaces mypy, Pyright
-
--   __uv__ · Rust
-
-    ---
-
-    Replaces pip, venv, Poetry
-
--   __pytest__ · Python
-
-    ---
+-   __pytest__ <span class="fp-chip fp-chip--python">Python</span>
 
     Replaces unittest, nose
 
--   __Poe the Poet__ · Python
+-   __basedpyright__ <span class="fp-chip fp-chip--js">Node</span>
 
-    ---
+    Replaces mypy, Pyright
 
-    Replaces Makefiles, ad-hoc scripts
+-   __pre-commit__ <span class="fp-chip fp-chip--python">Python</span>
 
--   __pre-commit__ · Python
+    Replaces hand-written Git hooks
 
-    ---
+-   __release-please__ <span class="fp-chip fp-chip--js">JS</span>
 
-    Replaces manual pre-commit checks
+    Replaces manual tagging
 
--   __Commitizen__ · Python
-
-    ---
+-   __Commitizen__ <span class="fp-chip fp-chip--python">Python</span>
 
     Replaces manual commit review
 
--   __release-please__ · GitHub Action
+-   __uv__ <span class="fp-chip fp-chip--rust">Rust</span>
 
-    ---
+    Replaces pip, venv, Poetry
 
-    Replaces manual tagging and changelogs
+-   __Poe the Poet__ <span class="fp-chip fp-chip--python">Python</span>
+
+    Replaces Makefiles
 
 </div>
