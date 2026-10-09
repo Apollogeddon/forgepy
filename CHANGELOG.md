@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.3](https://github.com/Apollogeddon/forgepy/compare/v0.4.2...v0.4.3) (2026-10-09)
+
+
+### Documentation
+
+* brighten the hero glow and match the README to the site's wording ([99c2d8c](https://github.com/Apollogeddon/forgepy/commit/99c2d8c79daa5db005b4744c8195f79550485b64))
+* explain what --website scaffolds and how it deploys ([4061360](https://github.com/Apollogeddon/forgepy/commit/40613605c2a437a881218e2d1c18d2a706d3fdf8))
+* explain what --website scaffolds and how it deploys ([763910a](https://github.com/Apollogeddon/forgepy/commit/763910aa17fe630409894d6d419d5913dfcb646c))
+
 ## [0.4.2](https://github.com/Apollogeddon/forgepy/compare/v0.4.1...v0.4.2) (2026-10-09)
 
 
