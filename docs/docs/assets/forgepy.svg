@@ -2,13 +2,13 @@
   <title>ForgePy</title>
   <defs>
     <linearGradient id="ag" x1="256" y1="115" x2="256" y2="444" gradientUnits="userSpaceOnUse">
-      <stop offset="0%"   stop-color="#86EFAC"/>
-      <stop offset="55%"  stop-color="#22C55E"/>
-      <stop offset="100%" stop-color="#15803D"/>
+      <stop offset="0%"   stop-color="#4ADE80"/>
+      <stop offset="55%"  stop-color="#16A34A"/>
+      <stop offset="100%" stop-color="#166534"/>
     </linearGradient>
     <linearGradient id="fg" x1="271" y1="115" x2="271" y2="263" gradientUnits="userSpaceOnUse">
-      <stop offset="0%"   stop-color="#FEF9C3"/>
-      <stop offset="100%" stop-color="#FDE68A"/>
+      <stop offset="0%"   stop-color="#F0FDF4"/>
+      <stop offset="100%" stop-color="#86EFAC"/>
     </linearGradient>
     <clipPath id="tableClip">
       <rect x="128.688" y="115.594" width="285" height="147.75"/>
