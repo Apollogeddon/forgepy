@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from forgepy.config import DEFAULT_PYTHON_VERSION
+
 # Plain (non f-string) templates — see workflows.py for why.
 # Built with --relocatable --no-managed-python so the venv depends on system
 # python3, not uv's own download path, which a .deb install can't guarantee exists.
@@ -84,7 +86,7 @@ def render(
     *,
     deb_name: str,
     module_name: str,
-    python_version: str = "3.13",
+    python_version: str = DEFAULT_PYTHON_VERSION,
     maintainer: str = "unspecified",
 ) -> str:
     return (

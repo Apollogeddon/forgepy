@@ -15,7 +15,8 @@ on:
       python_version:
         required: false
         type: string
-        default: '3.13'
+        description: "Python version; empty reads the project's .python-version, else Python 3.13"
+        default: ''
       enable_secrets:
         required: false
         type: boolean
@@ -63,9 +64,21 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+      # the input if set, else the project's .python-version, else forgepy's default
+      - name: Resolve the Python version
+        id: python
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          INPUT: ${{ inputs.python_version }}
+        run: |
+          if [ -n "$INPUT" ]; then version="$INPUT"
+          elif [ -f .python-version ]; then version=$(tr -d '[:space:]' < .python-version)
+          else version=3.13
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v7
         with:
-          python-version: ${{ inputs.python_version }}
+          python-version: ${{ steps.python.outputs.version }}
       - name: Install dependencies
         # unquoted on purpose: it can hold several arguments
         run: uv sync --locked $SYNC_ARGS

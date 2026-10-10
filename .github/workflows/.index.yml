@@ -62,7 +62,6 @@ jobs:
       test_release_prs: false
       # The self-hosted `xerus` runners; a public repository never uses them.
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
-      python_version: '3.13'
       working_directory: '.'
       publish: false
     permissions:
@@ -77,7 +76,6 @@ jobs:
     with:
       test_release_prs: false
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
-      python_version: '3.13'
       working_directory: 'docs'
       build_command: 'uv run zensical build --strict'
       enable_secrets: false

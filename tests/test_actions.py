@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 import yaml
 
+from forgepy.config import DEFAULT_PYTHON_VERSION
 from forgepy.templates import workflows as workflow_templates
 
 WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
@@ -90,7 +92,7 @@ def test_generated_index_yml_references_exist():
     ):
         docker = template is not workflow_templates.LIBRARY_WORKFLOW
         inputs = {"run_tests": False, "enable_versioning": False}
-        rendered = workflow_templates.render(template, python_version="3.13", docker=docker, inputs=inputs)
+        rendered = workflow_templates.render(template, docker=docker, inputs=inputs)
         doc = yaml.safe_load(rendered)
         for job in doc["jobs"].values():
             uses = job.get("uses")
@@ -146,9 +148,7 @@ def test_version_counts_any_package_release_only_for_the_root_package():
 
 
 def test_generated_jython_workflow_inputs_are_declared():
-    rendered = workflow_templates.render(
-        workflow_templates.SERVICE_WORKFLOW, python_version="3.13", inputs={"run_build": False}
-    )
+    rendered = workflow_templates.render(workflow_templates.SERVICE_WORKFLOW, inputs={"run_build": False})
     job = yaml.safe_load(rendered)["jobs"]["service"]
     with (WORKFLOWS_DIR / "service.yml").open(encoding="utf-8") as f:
         declared = _declared_inputs(yaml.safe_load(f))
@@ -181,3 +181,36 @@ def test_review_request_never_fails_the_pipeline():
     script = (WORKFLOWS_DIR / "review.yml").read_text(encoding="utf-8")
     assert "catch (error)" in script
     assert "core.warning" in script
+
+
+_SETUP_PYTHON = re.compile(r"uses: actions/setup-python@\S+\n\s+with:\n\s+python-version: (.+)")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [p for p in _workflow_files() if "uses: actions/setup-python" in p.read_text(encoding="utf-8")],
+    ids=lambda p: p.name,
+)
+def test_setup_python_uses_the_resolved_version(path: Path):
+    """The input wins, then the project's .python-version, then forgepy's default, which must match what init pins."""
+    content = path.read_text(encoding="utf-8")
+    setups = _SETUP_PYTHON.findall(content)
+    assert setups
+    assert all(version == "${{ steps.python.outputs.version }}" for version in setups)
+    assert re.findall(r"else version=(\S+)", content) == [DEFAULT_PYTHON_VERSION] * len(setups)
+    assert "elif [ -f .python-version ]" in content
+
+
+@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
+def test_python_version_input_defaults_to_empty(path: Path):
+    doc: YamlDoc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
+    workflow_call: YamlDoc = on_block.get("workflow_call") or {}
+    inputs: YamlDoc = workflow_call.get("inputs") or {}
+    if "python_version" in inputs:
+        assert inputs["python_version"]["default"] == ""
+
+
+def test_generated_workflow_leaves_the_version_to_python_version_file():
+    for template in (workflow_templates.SERVICE_WORKFLOW, workflow_templates.LIBRARY_WORKFLOW):
+        assert "python_version" not in workflow_templates.render(template)

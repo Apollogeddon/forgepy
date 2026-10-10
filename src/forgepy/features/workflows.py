@@ -62,8 +62,6 @@ class WorkflowFeature(Feature):
             inputs["run_tests"] = False
         if not cfg.versioning:
             inputs["enable_versioning"] = False
-        content = workflow_templates.render(
-            template, python_version=cfg.python_version, docker=cfg.docker, inputs=inputs
-        )
+        content = workflow_templates.render(template, docker=cfg.docker, inputs=inputs)
         ok &= create_file(ctx, ".github/workflows/index.yml", content)
         return ok
