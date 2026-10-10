@@ -15,6 +15,7 @@ Forge.py ships reusable GitHub Actions workflows that give every project the sam
 | `testing.yml` | The full check suite: `quality.yml`, pytest, the build artifact, and dependency security patches on `main` |
 | `version.yml` | Automated versioning and GitHub releases via release-please |
 | `merge.yml` | Auto-merges Dependabot pull requests once checks pass, except GitHub Actions updates |
+| `review.yml` | Requests a review on Dependabot's and release-please's pull requests, which `CODEOWNERS` doesn't do in a private repository on GitHub Free |
 | `service.yml` | Pipeline for backends: testing, auto-merge, versioning |
 | `library.yml` | Pipeline for libraries: testing, auto-merge, versioning, then publishing to PyPI |
 | `debian.yml` | Pipeline for Debian-packaged backends: testing, auto-merge, versioning, then the `.deb` build |
@@ -121,6 +122,7 @@ Most inputs are accepted by several workflows. The orchestrators (`service.yml`,
 | `auto_patch` | `true` | On `main`, upgrade packages with known vulnerabilities in `uv.lock` and commit the result | `testing.yml`, orchestrators |
 | `enable_versioning` | `true` | Run release-please. `forgepy init --no-versioning` sets it to `false` | Orchestrators |
 | `test_on_push`, `test_release_prs` | `true` | Where the checks run; see [Checking once per change](reference.md#checking-once-per-change) | Orchestrators |
+| `reviewers` | `''` | Comma-separated logins to request a review of Dependabot's and release-please's pull requests from; empty means the repository's owner; see [review.yml](reference.md#reviewyml) | `review.yml`, `version.yml`, orchestrators |
 
 `library.yml` also takes `publish`, `website.yml` takes `auto_merge`, and `docker.yml` has its own inputs, listed in the [job reference](reference.md#dockeryml).
 

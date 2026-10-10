@@ -153,3 +153,31 @@ def test_generated_jython_workflow_inputs_are_declared():
     with (WORKFLOWS_DIR / "service.yml").open(encoding="utf-8") as f:
         declared = _declared_inputs(yaml.safe_load(f))
     assert set(job["with"]) <= declared
+
+
+def _jobs(name: str) -> YamlDoc:
+    return yaml.safe_load((WORKFLOWS_DIR / name).read_text(encoding="utf-8"))["jobs"]
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml", "website.yml", "debian.yml"])
+def test_dependabot_pull_requests_request_a_review(name: str):
+    """CODEOWNERS requests nothing in a private repo on a free plan, so each pipeline asks itself, before the checks."""
+    jobs = _jobs(name)
+    review = jobs["review"]
+    assert review["uses"] == "./.github/workflows/review.yml"
+    assert "needs" not in review
+    assert "github.event.pull_request.user.login == 'dependabot[bot]'" in review["if"]
+    assert review["with"]["reviewers"] == "${{ inputs.reviewers }}"
+    assert jobs["version"]["with"]["reviewers"] == "${{ inputs.reviewers }}"
+
+
+def test_release_pull_request_requests_a_review():
+    review = _jobs("version.yml")["review"]
+    assert review["needs"] == ["release-please"]
+    assert review["with"]["pull_request"] == "${{ needs.release-please.outputs.pr_number }}"
+
+
+def test_review_request_never_fails_the_pipeline():
+    script = (WORKFLOWS_DIR / "review.yml").read_text(encoding="utf-8")
+    assert "catch (error)" in script
+    assert "core.warning" in script
