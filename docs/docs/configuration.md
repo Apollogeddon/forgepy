@@ -194,7 +194,7 @@ So moving a project to another version is one edit to `.python-version`, with `r
 | File | What it does |
 | :--- | :--- |
 | `.editorconfig` | LF line endings, UTF-8 and 120 columns, with 4-space Python and 2-space everything else, matching the Ruff config |
-| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The workflow's auto-merge job merges them once CI passes. |
+| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. `forgepy` itself is proposed daily, in a group of its own and without the wait, when the project installs it from a package index; Dependabot doesn't update a git source. The workflow's auto-merge job merges them once CI passes. |
 | `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |
 
 The `CODEOWNERS` owner is the GitHub account in a `[project.urls]` entry of `pyproject.toml` or, failing that, the `origin` remote. A project with neither gets no `CODEOWNERS`; run `init` again once it has a GitHub remote.

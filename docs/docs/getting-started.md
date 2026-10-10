@@ -145,7 +145,7 @@ A default `forgepy init` (backend) produces:
 ├── .github/
 │   ├── .release.json           # release-please manifest
 │   ├── CODEOWNERS              # requests your review on others' pull requests
-│   ├── dependabot.yml          # weekly updates with a 3-day cooldown
+│   ├── dependabot.yml          # weekly updates with a 3-day cooldown; forgepy daily
 │   ├── release.json            # release-please config
 │   └── workflows/index.yml     # CI/CD calling the reusable workflows
 ├── src/<package>/

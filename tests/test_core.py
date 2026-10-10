@@ -394,6 +394,15 @@ def test_init_writes_editorconfig_and_dependabot_with_a_cooldown():
     assert dependabot["updates"][1]["ignore"] == [{"dependency-name": "apollogeddon/forgepy"}]
 
 
+def test_init_proposes_forgepy_daily_without_the_cooldown():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    uv = yaml.safe_load(fs.read_text(PROJECT / ".github/dependabot.yml"))["updates"][0]
+    assert uv["schedule"]["interval"] == "daily"
+    assert uv["groups"]["apollogeddon"]["patterns"] == ["forgepy"]
+    assert uv["cooldown"]["exclude"] == ["forgepy"]
+
+
 def test_init_docker_adds_docker_to_dependabot():
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT, docker=True), fs)
