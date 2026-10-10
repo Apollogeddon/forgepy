@@ -175,3 +175,14 @@ The tests run on CPython 3, so vermin doesn't check them, but Ruff applies the s
 
 If the scripts are type-checked against several versions of a platform's stubs, put each version in its own dependency group and pass `sync_args` (for example `--no-default-groups --group dev --group stubs-v2`) to `testing.yml` from a matrix job.
 
+## Repository files
+
+`init` also writes three files for the repository itself. Like the other configs, an existing one is kept unless you pass `--force`.
+
+| File | What it does |
+| :--- | :--- |
+| `.editorconfig` | LF line endings, UTF-8 and 120 columns, with 4-space Python and 2-space everything else, matching the Ruff config |
+| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The workflow's auto-merge job merges them once CI passes. |
+| `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |
+
+The `CODEOWNERS` owner is the GitHub account in a `[project.urls]` entry of `pyproject.toml` or, failing that, the `origin` remote. A project with neither gets no `CODEOWNERS`; run `init` again once it has a GitHub remote.

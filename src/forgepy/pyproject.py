@@ -35,6 +35,13 @@ def project_name(doc: TOMLDocument, cwd: Path) -> str:
     return str(name) if name else cwd.name
 
 
+def project_urls(doc: TOMLDocument) -> list[str]:
+    """The URLs in the project's [project.urls] table, in order."""
+    project: AnyMap = cast(AnyMap, doc).get("project") or {}
+    urls: AnyMap = project.get("urls") or {}
+    return [str(url) for url in urls.values()]
+
+
 def package_module_name(doc: TOMLDocument, cwd: Path) -> str:
     """The importable module name for the project (PEP 503 name with '-' -> '_')."""
     return normalize_project_name(project_name(doc, cwd)).replace("-", "_")

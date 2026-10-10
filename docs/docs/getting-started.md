@@ -144,12 +144,15 @@ A default `forgepy init` (backend) produces:
 │   └── ruff.toml               # managed base config, refreshed by `forgepy sync`
 ├── .github/
 │   ├── .release.json           # release-please manifest
+│   ├── CODEOWNERS              # requests your review on others' pull requests
+│   ├── dependabot.yml          # weekly updates with a 3-day cooldown
 │   ├── release.json            # release-please config
 │   └── workflows/index.yml     # CI/CD calling the reusable workflows
 ├── src/<package>/
 │   ├── __init__.py
 │   └── __main__.py
 ├── tests/test_placeholder.py
+├── .editorconfig
 ├── .pre-commit-config.yaml
 ├── .python-version
 ├── pyproject.toml              # build system, poe tasks, dev dependencies

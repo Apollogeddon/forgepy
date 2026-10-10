@@ -12,6 +12,7 @@ from forgepy.core import EXIT_INVALID_CONFIG, init
 from forgepy.utils.filesystem import MemoryFileSystem
 
 PROJECT = Path("project")
+COOLDOWN_DAYS = 3
 
 
 def test_init_creates_expected_files_for_backend():
@@ -380,3 +381,45 @@ def test_init_without_jython_removes_the_jython_base_with_force():
     init(InitConfig(target=PROJECT, jython=True), fs)
     init(InitConfig(target=PROJECT, force=True), fs)
     assert not fs.exists(PROJECT / ".forgepy/ruff-jython.toml")
+
+
+def test_init_writes_editorconfig_and_dependabot_with_a_cooldown():
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT), fs) == 0
+    assert "[*.py]\nindent_size = 4" in fs.read_text(PROJECT / ".editorconfig")
+
+    dependabot = yaml.safe_load(fs.read_text(PROJECT / ".github/dependabot.yml"))
+    assert [u["package-ecosystem"] for u in dependabot["updates"]] == ["uv", "github-actions"]
+    assert all(u["cooldown"]["default-days"] == COOLDOWN_DAYS for u in dependabot["updates"])
+    assert dependabot["updates"][1]["ignore"] == [{"dependency-name": "apollogeddon/forgepy"}]
+
+
+def test_init_docker_adds_docker_to_dependabot():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, docker=True), fs)
+    dependabot = yaml.safe_load(fs.read_text(PROJECT / ".github/dependabot.yml"))
+    assert "docker" in [u["package-ecosystem"] for u in dependabot["updates"]]
+
+
+def test_init_codeowners_names_the_github_remote_owner_and_needs_one():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    assert not fs.exists(PROJECT / ".github/CODEOWNERS")
+
+    fs = MemoryFileSystem({str(PROJECT / ".git/config"): '[remote "origin"]\n\turl = git@github.com:acme/widget.git\n'})
+    init(InitConfig(target=PROJECT), fs)
+    assert "* @acme\n" in fs.read_text(PROJECT / ".github/CODEOWNERS")
+
+
+def test_init_codeowners_prefers_the_project_urls():
+    fs = MemoryFileSystem(
+        {
+            str(PROJECT / "pyproject.toml"): (
+                '[project]\nname = "widget"\nversion = "0.1.0"\n\n'
+                '[project.urls]\nRepository = "https://github.com/octo-org/widget"\n'
+            ),
+            str(PROJECT / ".git/config"): '[remote "origin"]\n\turl = git@github.com:acme/widget.git\n',
+        }
+    )
+    init(InitConfig(target=PROJECT), fs)
+    assert "* @octo-org\n" in fs.read_text(PROJECT / ".github/CODEOWNERS")

@@ -1,7 +1,7 @@
 [project]
 name = "forgepy"
 version = "0.4.4"
-description = "Scaffolds best-practice tooling into Python projects: linting, type-checking, testing, CI/CD, Docker, and Debian packaging"
+description = "Reusable GitHub Actions workflows and tooling configurations for Python projects"
 readme = "README.md"
 authors = [
     { name = "Apollogeddon" }
