@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/Apollogeddon/forgepy/compare/v0.5.0...v0.6.0) (2026-10-10)
+
+
+### Features
+
+* **ci:** request a review on Dependabot's and release-please's pull requests ([fae1302](https://github.com/Apollogeddon/forgepy/commit/fae1302027298302cc5cd2fa19b17f57c588fbe2))
+* **ci:** request a review on Dependabot's and release-please's pull requests ([5142d28](https://github.com/Apollogeddon/forgepy/commit/5142d2832e24f7bb64cfff741671c34afdea933e))
+
 ## [0.5.0](https://github.com/Apollogeddon/forgepy/compare/v0.4.4...v0.5.0) (2026-10-10)
 
 
