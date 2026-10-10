@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/Apollogeddon/forgepy/compare/v0.6.0...v0.7.0) (2026-10-10)
+
+
+### Features
+
+* **ci:** read the Python version from .python-version, falling back to Python 3.13 ([74e974c](https://github.com/Apollogeddon/forgepy/commit/74e974c66a03e83a7360fa683f95f30ef472e546))
+* **ci:** read the Python version from .python-version, falling back to Python 3.13 ([0d9dbd6](https://github.com/Apollogeddon/forgepy/commit/0d9dbd63ab18dbfe4465b68f9d75cb03ef48af46))
+
 ## [0.6.0](https://github.com/Apollogeddon/forgepy/compare/v0.5.0...v0.6.0) (2026-10-10)
 
 
