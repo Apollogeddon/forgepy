@@ -8,6 +8,7 @@ from forgepy import pyproject as pj
 from forgepy.config import InitConfig
 from forgepy.features.feature import Feature, FeatureContext, create_file, create_if_missing
 from forgepy.templates import package as package_templates
+from forgepy.templates import repository as repository_templates
 
 PRIVATE_CLASSIFIER = "Private :: Do Not Upload"
 # forgepy isn't on PyPI; resolving it from git also stops a same-named PyPI package being installed instead
@@ -39,7 +40,7 @@ class BaseFeature(Feature):
         if not ctx.cfg.mode.is_library:
             pj.ensure_classifier(ctx.pyproject, PRIVATE_CLASSIFIER)
 
-        ok = True
+        ok = create_file(ctx, ".editorconfig", repository_templates.EDITORCONFIG)
         if not ctx.cfg.packaged:
             # A docs site has no importable module, and Jython scripts aren't a Python 3 package,
             # so uv must not try to build/install it: it only installs the dev tools.

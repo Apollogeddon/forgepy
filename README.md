@@ -67,6 +67,7 @@ Add `--jython` to a backend for scripts that run on Jython 2.7, or `--docker` an
 `init` does the following:
 
 - Writes tool configs: `ruff.toml`, `pyrightconfig.json`, `pytest.toml`, `.pre-commit-config.yaml`, the release-please config and `.github/workflows/index.yml`, plus a `Dockerfile`, `nfpm.yaml` or `mkdocs.yml` depending on the mode.
+- Writes the repository files `.editorconfig`, `.github/dependabot.yml` and `.github/CODEOWNERS`.
 - Adds tasks such as `lint`, `type`, `test` and `build` to `[tool.poe.tasks]` in `pyproject.toml`.
 - Creates a starter package so `uv sync` and the generated tasks work straight away.
 
