@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.4](https://github.com/Apollogeddon/forgepy/compare/v0.4.3...v0.4.4) (2026-10-10)
+
+
+### Bug Fixes
+
+* **ci:** merge Dependabot PRs to branches without protection rules ([68043f5](https://github.com/Apollogeddon/forgepy/commit/68043f591147ef1eac7276a306cc6aaf06b4cd57))
+* **ci:** merge Dependabot PRs to branches without protection rules ([2c385e4](https://github.com/Apollogeddon/forgepy/commit/2c385e440c85701f096818e9e5c1c1c62988777d))
+
+
+### Documentation
+
+* add a Contributing section to the README ([6a8cbcf](https://github.com/Apollogeddon/forgepy/commit/6a8cbcf74e19f481fe5269d793cb50caacc112a8))
+* align the README header and sections with the other projects ([a6977d9](https://github.com/Apollogeddon/forgepy/commit/a6977d91fe5fe4152be7a8a73df5f7d95c10ad09))
+
 ## [0.4.3](https://github.com/Apollogeddon/forgepy/compare/v0.4.2...v0.4.3) (2026-10-09)
 
 
