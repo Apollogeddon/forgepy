@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/Apollogeddon/forgepy/compare/v0.4.4...v0.5.0) (2026-10-10)
+
+
+### Features
+
+* write repo files on init, and merge Dependabot PRs where auto-merge isn't offered ([#47](https://github.com/Apollogeddon/forgepy/issues/47)) ([7c0909e](https://github.com/Apollogeddon/forgepy/commit/7c0909e44edbb7ef3217e0ea907013bfd527f735))
+
 ## [0.4.4](https://github.com/Apollogeddon/forgepy/compare/v0.4.3...v0.4.4) (2026-10-10)
 
 
