@@ -9,6 +9,7 @@ import tomlkit
 from tomlkit import TOMLDocument, table
 from tomlkit.exceptions import TOMLKitError
 
+from forgepy.config import DEFAULT_PYTHON_VERSION
 from forgepy.utils.filesystem import FileSystem
 
 PYPROJECT_FILENAME = "pyproject.toml"
@@ -60,7 +61,7 @@ def _default_document(project_dir_name: str, python_version: str) -> TOMLDocumen
     return doc
 
 
-def load_or_create(fs: FileSystem, cwd: Path, python_version: str = "3.13") -> TOMLDocument:
+def load_or_create(fs: FileSystem, cwd: Path, python_version: str = DEFAULT_PYTHON_VERSION) -> TOMLDocument:
     path = cwd / PYPROJECT_FILENAME
     if not fs.exists(path):
         return _default_document(cwd.name, python_version)

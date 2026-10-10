@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+# The Python version a new project pins in .python-version, and the workflows' fallback when a
+# project has none. Raise it here; a test keeps the workflows' fallback in step.
+DEFAULT_PYTHON_VERSION = "3.13"
+
 
 class Mode(StrEnum):
     BACKEND = "backend"
@@ -35,7 +39,7 @@ class InitConfig:
     debian: bool = False
     # the code runs on Jython 2.7: uv installs only the dev tools, and the checks keep it Python 2 compatible
     jython: bool = False
-    python_version: str = "3.13"
+    python_version: str = DEFAULT_PYTHON_VERSION
     target: Path = field(default_factory=Path.cwd)
 
     @property

@@ -80,7 +80,6 @@ jobs:
       pull-requests: write
     with:
       working_directory: 'services/api'
-      python_version: '3.13'
 ```
 
 `version.yml` reads the project's own `services/api/.github/release.json` and `.release.json`, but release-please keys a package by its path from the repository root, so change the `"."` key in both to the subdirectory, and give the package a `component` so its tags and release PR don't collide with another project's:

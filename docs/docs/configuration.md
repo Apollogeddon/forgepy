@@ -175,6 +175,18 @@ The tests run on CPython 3, so vermin doesn't check them, but Ruff applies the s
 
 If the scripts are type-checked against several versions of a platform's stubs, put each version in its own dependency group and pass `sync_args` (for example `--no-default-groups --group dev --group stubs-v2`) to `testing.yml` from a matrix job.
 
+## Python version
+
+A project's Python version lives in `.python-version`, which `init` writes with `3.13`, or the version passed to `--python`, and which uv and `actions/setup-python` both read. `requires-python` in `pyproject.toml` starts from the same version.
+
+Every workflow job that sets up Python picks the version in this order:
+
+1. The `python_version` input, when the caller sets one.
+2. The project's `.python-version`.
+3. Python 3.13, forgepy's default, when the project has neither.
+
+So moving a project to another version is one edit to `.python-version`, with `requires-python` and Ruff's target version to match.
+
 ## Repository files
 
 `init` also writes three files for the repository itself. Like the other configs, an existing one is kept unless you pass `--force`.

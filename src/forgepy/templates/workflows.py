@@ -28,7 +28,6 @@ jobs:
       # PyPI trusted publishing (OIDC)
       id-token: write
     with:
-      python_version: '__FORGEPY_PYTHON_VERSION__'
       auto_patch: true
 """
 
@@ -53,7 +52,6 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      python_version: '__FORGEPY_PYTHON_VERSION__'
       auto_patch: true
 """
 
@@ -81,7 +79,6 @@ jobs:
       id-token: write
       pull-requests: write
     with:
-      python_version: '__FORGEPY_PYTHON_VERSION__'
       auto_patch: true
 """
 
@@ -106,7 +103,6 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      python_version: '__FORGEPY_PYTHON_VERSION__'
       auto_patch: true
 """
 
@@ -124,8 +120,9 @@ DOCKER_JOB = """
 """
 
 
-def render(template: str, *, python_version: str, docker: bool = False, inputs: dict[str, bool] | None = None) -> str:
-    rendered = template.replace("__FORGEPY_PYTHON_VERSION__", python_version)
+def render(template: str, *, docker: bool = False, inputs: dict[str, bool] | None = None) -> str:
+    # the Python version lives in .python-version, which the workflows read
+    rendered = template
     if inputs:
         # Disabled standard features become pipeline inputs so CI doesn't run what the project doesn't have
         lines = "".join(f"      {key}: {str(value).lower()}\n" for key, value in inputs.items())

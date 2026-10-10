@@ -30,7 +30,8 @@ on:
       python_version:
         required: false
         type: string
-        default: '3.13'
+        description: "Python version; empty reads the project's .python-version, else Python 3.13"
+        default: ''
       working_directory:
         required: false
         type: string

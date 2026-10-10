@@ -50,7 +50,6 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      python_version: '3.13'
       auto_patch: true
 ```
 
@@ -65,7 +64,6 @@ jobs:
       pull-requests: write
       id-token: write
     with:
-      python_version: '3.13'
       auto_patch: true
 ```
 
@@ -81,7 +79,6 @@ jobs:
       id-token: write
       pull-requests: write
     with:
-      python_version: '3.13'
       auto_patch: true
 ```
 
@@ -110,7 +107,7 @@ Most inputs are accepted by several workflows. The orchestrators (`service.yml`,
 
 | Input | Default | Description | Accepted by |
 | :--- | :--- | :--- | :--- |
-| `python_version` | `'3.13'` | Python version for every job | All but `merge.yml`, `version.yml` and `docker.yml` |
+| `python_version` | `''` | Python version for every job. Empty reads the project's `.python-version`, and without one uses Python 3.13; see [Python version](../configuration.md#python-version) | All but `merge.yml`, `version.yml` and `docker.yml` |
 | `working_directory` | `'.'` | Directory containing `pyproject.toml` | All but `merge.yml` |
 | `runs_on` | `'ubuntu-latest'` | Runner label for the jobs; see [Choosing runners](reference.md#choosing-runners) | All |
 | `enable_secrets` | `true` | Run the Gitleaks secret scan | `quality.yml`, `testing.yml`, orchestrators |

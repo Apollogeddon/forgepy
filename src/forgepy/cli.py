@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from forgepy import __version__, console
-from forgepy.config import InitConfig, Mode
+from forgepy.config import DEFAULT_PYTHON_VERSION, InitConfig, Mode
 from forgepy.core import init
 from forgepy.jython import check as check_jython
 from forgepy.sync import sync
@@ -72,9 +72,9 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--python",
         dest="python_version",
-        default="3.13",
+        default=DEFAULT_PYTHON_VERSION,
         metavar="VERSION",
-        help="Target Python version (default: 3.13)",
+        help=f"Target Python version (default: {DEFAULT_PYTHON_VERSION})",
     )
     init_parser.add_argument(
         "-C", "--path", dest="path", default=".", metavar="DIR", help="Target directory (default: current directory)"
