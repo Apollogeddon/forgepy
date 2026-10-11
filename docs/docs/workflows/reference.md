@@ -66,7 +66,7 @@ In that mode release-please tags the release before the push's checks run. If th
 *Security and static analysis.*
 
 1. **`secure`**: Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner dependency scan. The OSV-Scanner results are reported in the log but don't fail the job; `testing.yml`'s `patch` job acts on them on `main`.
-2. **`linting`**: `uv sync --locked` (plus `sync_args`), then `ruff check`, `ruff format --check`, `basedpyright` and `forgepy sync --check` when the project has a `.forgepy/` directory. In a `--jython` project (one with `.forgepy/ruff-jython.toml`) it also runs `poe compat`, the vermin Jython 2.7 check.
+2. **`linting`**: `uv sync --locked` (plus `sync_args`), then `ruff check`, `ruff format --check`, `basedpyright` and `forgepy sync --check` when the project has a `.forgepy/` directory. In a `--jython` project (one with `.forgepy/ruff-jython.toml`) it also runs `poe compat`, the vermin Jython 2.7 check. Runs `website.yml`'s [pre-build command](#generating-content-before-the-build) first, if set.
 
 ## testing.yml
 
@@ -74,7 +74,7 @@ In that mode release-please tags the release before the push's checks run. If th
 
 1. Calls `quality.yml`.
 2. **`testing`**: `uv sync --locked` and `pytest` (skip with `run_tests: false`); uploads the coverage and JUnit reports. *(Needs: quality)*
-3. **`build`**: runs `build_command` (default `uv build`) and uploads the result as the `artifact_name` artifact. It runs alongside `testing`, once `quality` passes. Skip it with `run_build: false` for a project with nothing to build. *(Needs: quality)*
+3. **`build`**: runs `build_command` (default `uv build`) and uploads the result as the `artifact_name` artifact. It runs alongside `testing`, once `quality` passes. Skip it with `run_build: false` for a project with nothing to build. Both jobs run `website.yml`'s [pre-build command](#generating-content-before-the-build) before `uv sync`, if set. *(Needs: quality)*
 4. **`patch`**: on `main` with `auto_patch` enabled, scans `uv.lock` with OSV-Scanner, upgrades only the vulnerable packages with `uv lock --upgrade-package` (transitive ones included, within the ranges `pyproject.toml` allows, without building any package), and commits the new `uv.lock`. OSV-Scanner can't fix a `uv.lock` in place, so uv does the upgrade. *(Needs: quality, testing, build)*
 
 ## version.yml
@@ -142,10 +142,80 @@ Configure the trusted publisher on your PyPI project's settings page first.
 *The full pipeline for website projects, ending in deployment to GitHub Pages.*
 
 1. Calls `testing.yml` to validate and build the site (`build_command` defaults to `uv run zensical build`). Pass `run_tests: false` for sites without tests.
-2. Calls `merge.yml` to auto-merge Dependabot PRs once testing passes. Disable with `auto_merge: false`. *(Needs: testing)*
+2. Calls `merge.yml` to auto-merge Dependabot PRs once testing passes, and the site checks if they're on. Disable with `auto_merge: false`. *(Needs: testing, site-checks)*
 3. Calls `version.yml` to check if a new release was published. Skip with `enable_versioning: false`. *(Needs: testing)*
 4. **`release-testing`**: as in `library.yml`. *(Needs: version)*
-5. **`deploy`**: downloads the build artifact and deploys it to GitHub Pages. Runs on the main branch only and, when versioning is enabled, only when a new release is published. *(Needs: testing, version, release-testing)*
+5. **`site-checks`**: only with `check_links` or `check_accessibility`: checks the built artifact's links and pages. See [Site checks](#site-checks). Needs `contents: read`. *(Needs: testing, release-testing)*
+6. **`deploy`**: downloads the build artifact and deploys it to GitHub Pages. Runs on the main branch only and, when versioning is enabled, only when a new release is published, and not when a site check failed. *(Needs: testing, version, release-testing, site-checks)*
+
+Takes the [common inputs](overview.md#common-inputs), `auto_merge`, and:
+
+| Input | Default | Description |
+| :--- | :--- | :--- |
+| `ref` | `''` | Commit, branch or tag to check, build and deploy; empty means the commit that triggered the run |
+| `pre_build_command` | `''` | Shell command run in `working_directory` before `uv sync`, in every job that installs the site |
+| `base_path` | `''` | The path the site is served under, such as `/my-repo/` for a GitHub Pages project site; the site checks need it to resolve root-relative links. Empty means `/` |
+| `check_links` | `false` | Check the built site's links with lychee; internal links only unless `check_external_links` |
+| `check_external_links` | `false` | With `check_links`, check links to other sites too |
+| `link_check_args` | `''` | Extra lychee arguments, such as `--include-fragments` or `--exclude <pattern>` |
+| `check_accessibility` | `false` | Check the built site against WCAG 2.2 A and AA with axe, in a headless Chromium |
+| `accessibility_paths` | `''` | Comma- or newline-separated pages to check, relative to `base_path`; empty checks every page in the sitemap, else the home page |
+| `accessibility_impact` | `'serious'` | The lowest axe impact that fails the check (`minor`, `moderate`, `serious` or `critical`); lower ones are warnings |
+
+It also takes one optional secret, `GH_TOKEN`, for `pre_build_command`.
+
+### Building another commit
+
+By default every job checks out the commit that triggered the run. Set `ref` to a branch, tag or commit to check, build and deploy that instead, for example the tip of `main` after an earlier job in the same run pushed a commit to it:
+
+```yaml
+jobs:
+  generate:
+    # ...commits generated files and pushes them to main
+  website:
+    needs: generate
+    uses: apollogeddon/forgepy/.github/workflows/website.yml@main
+    with:
+      ref: main
+```
+
+`testing.yml`'s `patch` job still checks out the triggering commit, so on `main` it can only push its patches when nothing else has pushed since.
+
+### Generating content before the build
+
+A site that builds from files something else makes first, such as reference pages a script writes or a file copied from elsewhere in the repository, sets `pre_build_command`. It runs with `bash -e` in `working_directory`, after uv and Python are set up and before `uv sync`, in the lint, test and build jobs, so the checks see the same files the build does:
+
+```yaml
+jobs:
+  website:
+    uses: apollogeddon/forgepy/.github/workflows/website.yml@main
+    with:
+      pre_build_command: |
+        uv run --script scripts/gen_reference.py --out docs/reference
+        cp CHANGELOG.md docs/changelog.md
+    secrets:
+      GH_TOKEN: ${{ secrets.DOCS_TOKEN }}
+```
+
+The command gets a token, as `GH_TOKEN`, only when the caller passes the `GH_TOKEN` secret; `gh` reads it from there. To give it the run's own token, pass `GH_TOKEN: ${{ github.token }}`; it has the permissions of the calling job. The checkout keeps no credentials, so `git` can't push with it either way.
+
+### Site checks
+
+Both checks run in one `site-checks` job on the artifact the build uploaded, so they check exactly what the deploy would ship, and a failure stops the deploy and the Dependabot merge. Both are off by default, as a check that suddenly fails would break the sites already calling `website.yml`. Each writes its findings to the run's summary. The inputs match forgejs's and forgego's website workflows.
+
+```yaml
+    with:
+      base_path: /my-repo/
+      check_links: true
+      check_accessibility: true
+      accessibility_paths: |
+        /
+        /reference/
+```
+
+- **`base_path`** is the path in `site_url` in `mkdocs.yml`, such as `/my-repo/` for `https://owner.github.io/my-repo/`. The job serves the site under that path, as GitHub Pages does. Leave it empty for a site at the root of its domain, or one with no `site_url`, such as the `mkdocs.yml` `forgepy init --website` writes.
+- **`check_links`** runs [lychee](https://github.com/lycheeverse/lychee) over every HTML page, with a directory link needing its `index.html`, and a link without an extension also matching `<path>.html`. With `site_url` set, Zensical writes some links with the site's full address; the job reads that address from the site's `sitemap.xml` and checks those links in the build as well. It runs `--offline` unless `check_external_links` is on, so another site being down can't fail the build. Pass more lychee options in `link_check_args`, or add a `lychee.toml` or `.lycheeignore` to `working_directory`.
+- **`check_accessibility`** serves the site locally and runs [axe](https://github.com/dequelabs/axe-core) in Playwright's headless Chromium against WCAG 2.0, 2.1 and 2.2 A and AA, on each page in `accessibility_paths`, else every page in `sitemap.xml`, else the home page. Zensical lists pages in its sitemap only when `site_url` is set. Violations at `accessibility_impact` or above fail the job and are annotated on the run; lower ones are reported as warnings. Zensical's default theme fails some `critical` and `serious` rules, such as `button-name` and `aria-required-attr` on its search, so fix those (as this site does in `docs/docs/javascripts/a11y.js`) before turning the check on. A self-hosted runner needs passwordless `sudo`, or Chromium's system libraries already installed.
 
 ## docker.yml
 

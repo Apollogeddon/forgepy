@@ -121,7 +121,7 @@ forgepy --version
 | `--python VERSION` | Target Python version (default: `3.13`). |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
-`--website` scaffolds a static documentation site built with Zensical: `mkdocs.yml`, which Zensical reads as its configuration, and `docs/index.md`. There is no Python package. `uv run poe dev` serves the site locally with live reload, and `uv run poe build` writes it to `dist/`. In CI, the `website.yml` workflow builds the site and deploys `dist/` to GitHub Pages.
+`--website` scaffolds a static documentation site built with Zensical: `mkdocs.yml`, which Zensical reads as its configuration, and `docs/index.md`. There is no Python package. `uv run poe dev` serves the site locally with live reload, and `uv run poe build` writes it to `dist/`. In CI, the `website.yml` workflow builds the site and deploys `dist/` to GitHub Pages. It can also check the built site's links and accessibility, and run a command that generates content before the build; see [`website.yml`](workflows/reference.md#websiteyml).
 
 `--no-testing` and `--no-versioning` also turn off the matching jobs in the generated CI workflow.
 

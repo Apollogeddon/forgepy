@@ -88,6 +88,7 @@ It is safe to re-run: existing files and tasks are left alone unless you pass `-
 | CI/CD | Reusable [GitHub Actions](https://docs.github.com/actions) workflows |
 | Containers (`--docker`) | Multi-platform images built with Docker Buildx and pushed to GHCR on release |
 | Debian packages (`--debian`) | [nFPM](https://nfpm.goreleaser.com/) |
+| Website checks (CI, opt-in) | [lychee](https://lychee.cli.rs/) for links and [axe](https://github.com/dequelabs/axe-core) for accessibility |
 
 ## Keeping projects up to date
 
