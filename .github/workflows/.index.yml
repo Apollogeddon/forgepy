@@ -83,6 +83,10 @@ jobs:
       enable_versioning: false
       # the tool's pipeline auto-merges Dependabot PRs; this one does when only docs/ changed
       auto_merge: ${{ needs.changes.outputs.code != 'true' }}
+      # the site's internal links and WCAG 2.2 AA; it's served under /forgepy/ on GitHub Pages
+      check_links: true
+      check_accessibility: true
+      base_path: '/forgepy/'
       # distinct from the library job's 'dist' artifact in the same run
       artifact_name: 'pages-dist'
     permissions:
