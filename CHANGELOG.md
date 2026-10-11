@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/Apollogeddon/forgepy/compare/v0.8.0...v0.9.0) (2026-10-11)
+
+
+### Features
+
+* **ci:** add a checkout ref, pre-build command and opt-in link and accessibility checks to websites ([ab08cef](https://github.com/Apollogeddon/forgepy/commit/ab08cef07a1ff0e035400ecf70dc7aec119b8ac4))
+
 ## [0.8.0](https://github.com/Apollogeddon/forgepy/compare/v0.7.0...v0.8.0) (2026-10-11)
 
 
