@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/Apollogeddon/forgepy/compare/v0.7.0...v0.8.0) (2026-10-11)
+
+
+### Features
+
+* pin forgepy to its release tag in generated projects ([45f9c49](https://github.com/Apollogeddon/forgepy/commit/45f9c4938e5cf28bff3a038fd5385ff8303de01e))
+* pin forgepy to its release tag in generated projects ([bf1287a](https://github.com/Apollogeddon/forgepy/commit/bf1287a0e2355cff3861f0bacf8fe9c0b573278f))
+
 ## [0.7.0](https://github.com/Apollogeddon/forgepy/compare/v0.6.0...v0.7.0) (2026-10-10)
 
 
