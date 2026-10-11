@@ -23,24 +23,33 @@ The Ruff and basedpyright base configs live in `.forgepy/` inside your project. 
 
 `init` adds `forgepy[toolchain]` to the `dev` dependency group in `pyproject.toml`. The `toolchain` extra brings in Ruff, basedpyright, pytest, pytest-cov, Poe the Poet, pre-commit, Commitizen, watchdog and validate-pyproject, with minimum versions only; your `uv.lock` pins the exact versions. Websites also get Zensical, and `--jython` projects get vermin.
 
-As Forge.py isn't on PyPI, `init` also adds a `[tool.uv.sources]` entry that installs it from Git:
+As Forge.py isn't on PyPI, `init` also adds a `[tool.uv.sources]` entry that installs it from Git, pinned to the tag of the release that ran `init`:
 
 ```toml
 [tool.uv.sources]
-forgepy = { git = "https://github.com/apollogeddon/forgepy" }
+forgepy = { git = "https://github.com/apollogeddon/forgepy", tag = "v0.7.0" }
 ```
 
-An existing `forgepy` source, such as a local path, is never replaced, even with `--force`.
+The tag keeps `uv.lock` on that release, so an unrelated `uv lock --upgrade` doesn't move the project to whatever is on Forge.py's `main`. A build of Forge.py that isn't a release (a version such as `0.8.0.dev1`) writes the source without a tag and warns; add the tag yourself. Between releases, Forge.py's `main` carries the last release's version, so installing from `main` pins that release.
+
+Re-running `init` adds the tag to an untagged source, and replaces an existing tag only with `--force`. Any other `forgepy` source, such as a local path, a fork, a `branch` or a `rev`, is never replaced, even with `--force`.
 
 ## Upgrading
 
-To move a project to the latest Forge.py and refresh its managed configs:
+Forge.py is upgraded by hand: change the tag, then lock, sync and refresh the managed configs:
+
+```toml
+[tool.uv.sources]
+forgepy = { git = "https://github.com/apollogeddon/forgepy", tag = "v0.8.0" }
+```
 
 ```bash
-uv lock --upgrade-package forgepy
+uv lock
 uv sync
 uv run forgepy sync
 ```
+
+`uv lock --upgrade-package forgepy` doesn't move past the tag. Dependabot's uv support reads the tagged source, but doesn't yet look up newer tags on a Git remote, so it doesn't propose Forge.py upgrades. Once it does, the generated `uv` entry in `.github/dependabot.yml` will propose them with no change. `forgepy sync` never moves the tag.
 
 `forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and the CI quality job all run it, so a stale snapshot fails the checks.
 

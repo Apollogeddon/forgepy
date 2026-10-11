@@ -54,7 +54,7 @@ uv sync
 uv run poe hooks
 ```
 
-The generated `pyproject.toml` adds `forgepy[toolchain]` to the `dev` dependency group and points `[tool.uv.sources]` at the Forge.py Git repository, so `uv sync` installs Forge.py and its tools into the project's virtual environment.
+The generated `pyproject.toml` adds `forgepy[toolchain]` to the `dev` dependency group and points `[tool.uv.sources]` at the Forge.py Git repository, pinned to the release's tag (see [Upgrading](configuration.md#upgrading)), so `uv sync` installs Forge.py and its tools into the project's virtual environment.
 
 `init` is safe to re-run. It creates missing files and tasks, and leaves anything that already exists alone.
 

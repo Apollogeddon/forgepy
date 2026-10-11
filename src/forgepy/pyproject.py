@@ -151,3 +151,32 @@ def set_table_if_absent(
     for k, v in content.items():
         new_table.add(k, tomlkit.item(v))
     node[leaf_key] = new_table
+
+
+def ensure_git_source(doc: TOMLDocument, package: str, url: str, *, tag: str | None, force: bool) -> bool:
+    """Point [tool.uv.sources] at `url`, pinned to `tag` when given. Returns whether the source changed.
+
+    Any other source (a path, a workspace, a fork, a branch or rev) is left alone, even with --force;
+    an existing tag on `url` is only replaced with --force, as moving it is the project's decision.
+    """
+    sources = _ensure_table(doc, ("tool", "uv", "sources"))
+    current = sources.get(package)
+    if current is None:
+        source = tomlkit.inline_table()
+        source["git"] = url
+        if tag:
+            source["tag"] = tag
+        sources[package] = source
+        return True
+
+    if not isinstance(current, MutableMapping):
+        return False
+    existing = cast(AnyMap, current)
+    if str(existing.get("git", "")).rstrip("/").removesuffix(".git").lower() != url.lower():
+        return False
+    if "rev" in existing or "branch" in existing or not tag:
+        return False
+    if "tag" in existing and (not force or str(existing["tag"]) == tag):
+        return False
+    existing["tag"] = tag
+    return True

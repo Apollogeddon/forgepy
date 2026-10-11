@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import ClassVar
 
-import tomlkit
-
+from forgepy import __version__, console
 from forgepy import pyproject as pj
 from forgepy.config import InitConfig
 from forgepy.features.feature import Feature, FeatureContext, create_file, create_if_missing
@@ -13,6 +13,15 @@ from forgepy.templates import repository as repository_templates
 PRIVATE_CLASSIFIER = "Private :: Do Not Upload"
 # forgepy isn't on PyPI; resolving it from git also stops a same-named PyPI package being installed instead
 FORGEPY_GIT = "https://github.com/apollogeddon/forgepy"
+_RELEASE_VERSION = re.compile(r"\d+\.\d+\.\d+")
+
+
+def release_tag(version: str) -> str | None:
+    """The Git tag a release of forgepy is published under, or None for a version that isn't a release.
+
+    Between releases the version stays at the last release's, so a build of main pins that release.
+    """
+    return f"v{version}" if _RELEASE_VERSION.fullmatch(version) else None
 
 
 class BaseFeature(Feature):
@@ -32,10 +41,14 @@ class BaseFeature(Feature):
 
         # The toolchain provides ruff/basedpyright/pytest, which CI runs whichever features are enabled.
         pj.ensure_dev_dependency(ctx.pyproject, "forgepy[toolchain]")
-        source = tomlkit.inline_table()
-        source["git"] = FORGEPY_GIT
-        # never overwrite an existing source (e.g. a local path), even with --force
-        pj.set_key_if_absent(ctx.pyproject, ("tool", "uv", "sources"), "forgepy", source, force=False)
+        # A tag keeps uv.lock on a release instead of whatever main was when it was last locked.
+        tag = release_tag(__version__)
+        changed = pj.ensure_git_source(ctx.pyproject, "forgepy", FORGEPY_GIT, tag=tag, force=ctx.cfg.force)
+        if changed and tag is None:
+            console.warn(
+                f"forgepy {__version__} isn't a release, so the forgepy source has no tag and follows main: "
+                'add tag = "vX.Y.Z" to it in [tool.uv.sources] to pin a release'
+            )
 
         if not ctx.cfg.mode.is_library:
             pj.ensure_classifier(ctx.pyproject, PRIVATE_CLASSIFIER)

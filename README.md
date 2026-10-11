@@ -93,10 +93,10 @@ It is safe to re-run: existing files and tasks are left alone unless you pass `-
 
 A generated project depends on `forgepy[toolchain]` as a dev dependency, which sets minimum versions for the tools. The project's own `uv.lock` pins the exact versions.
 
-The Ruff and basedpyright base configs are copied into `.forgepy/`, and the project's `ruff.toml` and `pyrightconfig.json` extend them. To pick up a newer Forge.py and its configs:
+Forge.py itself is installed from Git, pinned in `[tool.uv.sources]` to the release tag that ran `init`. The Ruff and basedpyright base configs are copied into `.forgepy/`, and the project's `ruff.toml` and `pyrightconfig.json` extend them. To pick up a newer Forge.py and its configs, change the tag (`forgepy = { git = "...", tag = "vX.Y.Z" }`), then:
 
 ```bash
-uv lock --upgrade-package forgepy
+uv lock
 uv sync
 uv run forgepy sync
 ```
