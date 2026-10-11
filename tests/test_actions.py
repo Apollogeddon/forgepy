@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any, cast
 
@@ -214,3 +217,148 @@ def test_python_version_input_defaults_to_empty(path: Path):
 def test_generated_workflow_leaves_the_version_to_python_version_file():
     for template in (workflow_templates.SERVICE_WORKFLOW, workflow_templates.LIBRARY_WORKFLOW):
         assert "python_version" not in workflow_templates.render(template)
+
+
+def _workflow_call(name: str) -> YamlDoc:
+    doc: YamlDoc = yaml.safe_load((WORKFLOWS_DIR / name).read_text(encoding="utf-8"))
+    on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
+    return on_block.get("workflow_call") or {}
+
+
+@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
+def test_passed_secrets_are_declared_by_callee(path: Path):
+    for job in _jobs(path.name).values():
+        uses = job.get("uses")
+        secrets: YamlDoc = job.get("secrets") or {}
+        if not (isinstance(uses, str) and uses.startswith("./.github/workflows/")):
+            continue
+        callee_secrets: YamlDoc = _workflow_call(uses.split("/")[-1]).get("secrets") or {}
+        for key in secrets:
+            assert key in callee_secrets, f"{path.name} passes undeclared secret '{key}' to {uses}"
+
+
+# every new input keeps what a caller that doesn't set it already gets
+@pytest.mark.parametrize(
+    ("name", "default"),
+    [
+        ("ref", ""),
+        ("pre_build_command", ""),
+        ("base_path", ""),
+        ("check_links", False),
+        ("check_external_links", False),
+        ("link_check_args", ""),
+        ("check_accessibility", False),
+        ("accessibility_paths", ""),
+        ("accessibility_impact", "serious"),
+    ],
+)
+def test_website_inputs_default_to_what_callers_had(name: str, default: object):
+    assert _workflow_call("website.yml")["inputs"][name]["default"] == default
+
+
+@pytest.mark.parametrize("job", ["testing", "release-testing"])
+def test_website_passes_the_build_options_to_testing(job: str):
+    call = _jobs("website.yml")[job]
+    for name in ("ref", "pre_build_command"):
+        assert call["with"][name] == f"${{{{ inputs.{name} }}}}"
+    assert call["secrets"] == {"GH_TOKEN": "${{ secrets.GH_TOKEN }}"}
+
+
+def test_testing_passes_the_build_options_to_quality():
+    call = _jobs("testing.yml")["quality"]
+    for name in ("ref", "pre_build_command"):
+        assert call["with"][name] == f"${{{{ inputs.{name} }}}}"
+    assert call["secrets"] == {"GH_TOKEN": "${{ secrets.GH_TOKEN }}"}
+    for name in ("website.yml", "testing.yml", "quality.yml"):
+        assert _workflow_call(name)["secrets"]["GH_TOKEN"]["required"] is False
+
+
+@pytest.mark.parametrize(
+    ("name", "job"),
+    [("quality.yml", "secure"), ("quality.yml", "linting"), ("testing.yml", "testing"), ("testing.yml", "build")],
+)
+def test_jobs_check_out_the_ref(name: str, job: str):
+    steps = _jobs(name)[job]["steps"]
+    checkout = next(step for step in steps if step.get("uses", "").startswith("actions/checkout"))
+    assert checkout["with"]["ref"] == "${{ inputs.ref }}"
+
+
+@pytest.mark.parametrize(
+    ("name", "job"), [("quality.yml", "linting"), ("testing.yml", "testing"), ("testing.yml", "build")]
+)
+def test_pre_build_command_runs_before_installing(name: str, job: str):
+    steps: list[YamlDoc] = _jobs(name)[job]["steps"]
+    names = [step.get("name") for step in steps]
+    assert names.index("Pre-build command") < names.index("Install dependencies")
+    hook = steps[names.index("Pre-build command")]
+    assert hook["if"] == "inputs.pre_build_command != ''"
+    # through the environment, never interpolated into the script
+    assert "${{" not in hook["run"]
+    assert hook["env"] == {
+        "GH_TOKEN": "${{ secrets.GH_TOKEN }}",
+        "PRE_BUILD_COMMAND": "${{ inputs.pre_build_command }}",
+    }
+
+
+def _site_step(name: str) -> YamlDoc:
+    return next(step for step in _jobs("website.yml")["site-checks"]["steps"] if step.get("name") == name)
+
+
+def test_site_checks_are_opt_in_and_gate_the_deploy_and_merge():
+    jobs = _jobs("website.yml")
+    assert "inputs.check_links || inputs.check_accessibility" in jobs["site-checks"]["if"]
+    for name in ("deploy", "auto-merge"):
+        # waits for the checks, but still runs when they're skipped
+        assert "site-checks" in jobs[name]["needs"]
+        assert "!failure()" in jobs[name]["if"]
+
+
+def test_site_checks_only_check_what_is_asked():
+    assert _site_step("Check links")["if"] == "inputs.check_links"
+    for name in ("Install the accessibility checker", "Check accessibility"):
+        # runs whatever the link check found
+        assert "inputs.check_accessibility" in _site_step(name)["if"]
+        assert "!cancelled()" in _site_step(name)["if"]
+
+
+def test_link_check_is_internal_unless_asked():
+    step = _site_step("Check links")
+    assert re.fullmatch(r"lycheeverse/lychee-action@v\d+", step["uses"])
+    assert "${{ !inputs.check_external_links && '--offline' || '' }}" in step["with"]["args"]
+    assert "--root-dir '${{ steps.site.outputs.root }}'" in step["with"]["args"]
+    assert step["with"]["fail"] is True
+
+
+@pytest.mark.parametrize(
+    ("base_path", "base"),
+    [("", "/"), ("/", "/"), ("my-site", "/my-site/"), ("/my-site", "/my-site/"), ("/a/b/", "/a/b/")],
+)
+def test_site_is_staged_under_base_path(tmp_path: Path, base_path: str, base: str):
+    build = tmp_path / "build"
+    build.mkdir()
+    (build / "index.html").write_text("<h1>hi</h1>", encoding="utf-8")
+    (build / "sitemap.xml").write_text(
+        "<urlset><url><loc>https://owner.github.io/my-site/</loc></url></urlset>", encoding="utf-8"
+    )
+    output = tmp_path / "output"
+    env = {"PATH": os.environ["PATH"], "BASE_PATH": base_path, "BUILD": str(build)}
+    env |= {"RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output)}
+    subprocess.run(["bash", "-e", "-c", _site_step("Stage the site for checking")["run"]], env=env, check=True)
+    outputs = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
+    root = tmp_path / "site"
+    assert outputs["root"] == str(root)
+    assert outputs["base"] == base
+    assert (root / base.strip("/") / "index.html").is_file()
+    # links to the site's own address are checked in the staged copy
+    assert outputs["remap"] == rf"--remap '^https://owner\.github\.io/ file://{root}/'"
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js")
+def test_accessibility_checker_parses(tmp_path: Path):
+    run = _site_step("Install the accessibility checker")["run"]
+    match = re.search(r"<<'EOF'\n(.*?)\nEOF", run, re.DOTALL)
+    assert match
+    script = tmp_path / "check.mjs"
+    script.write_text(match.group(1), encoding="utf-8")
+    assert "AxeBuilder" in match.group(1)
+    subprocess.run(["node", "--check", str(script)], check=True)

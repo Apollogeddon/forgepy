@@ -19,7 +19,7 @@ Forge.py ships reusable GitHub Actions workflows that give every project the sam
 | `service.yml` | Pipeline for backends: testing, auto-merge, versioning |
 | `library.yml` | Pipeline for libraries: testing, auto-merge, versioning, then publishing to PyPI |
 | `debian.yml` | Pipeline for Debian-packaged backends: testing, auto-merge, versioning, then the `.deb` build |
-| `website.yml` | Pipeline for websites: testing, auto-merge, versioning, then deployment to GitHub Pages |
+| `website.yml` | Pipeline for websites: testing, optional link and accessibility checks, auto-merge, versioning, then deployment to GitHub Pages |
 | `docker.yml` | Multi-platform Docker image build, pushed to GHCR on release; added as its own job by `--docker` |
 
 ## Calling the workflows
@@ -121,11 +121,11 @@ Most inputs are accepted by several workflows. The orchestrators (`service.yml`,
 | `test_on_push`, `test_release_prs` | `true` | Where the checks run; see [Checking once per change](reference.md#checking-once-per-change) | Orchestrators |
 | `reviewers` | `''` | Comma-separated logins to request a review of Dependabot's and release-please's pull requests from; empty means the repository's owner; see [review.yml](reference.md#reviewyml) | `review.yml`, `version.yml`, orchestrators |
 
-`library.yml` also takes `publish`, `website.yml` takes `auto_merge`, and `docker.yml` has its own inputs, listed in the [job reference](reference.md#dockeryml).
+`library.yml` also takes `publish`, `website.yml` takes `auto_merge`, a checkout `ref`, a `pre_build_command` and the site checks, and `docker.yml` has its own inputs, listed in the [job reference](reference.md#dockeryml).
 
 ## Secrets
 
-No secrets need passing. The workflows only use the `GITHUB_TOKEN` that every called workflow receives, so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. PyPI publishing uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) through OIDC, which is why the library job asks for `id-token: write`.
+No secrets need passing. The workflows only use the `GITHUB_TOKEN` that every called workflow receives, so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. PyPI publishing uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) through OIDC, which is why the library job asks for `id-token: write`. `website.yml` takes one optional secret, `GH_TOKEN`, for a [pre-build command](reference.md#generating-content-before-the-build); pass it by name if you need it.
 
 ## Required permissions
 

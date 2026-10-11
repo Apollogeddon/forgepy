@@ -48,6 +48,20 @@ on:
         required: false
         type: string
         default: 'uv build'
+      ref:
+        description: "Commit, branch or tag to check out; empty means the commit that triggered the run"
+        required: false
+        type: string
+        default: ''
+      pre_build_command:
+        description: "Shell command run in working_directory before installing dependencies, in every job that does; GH_TOKEN holds the GH_TOKEN secret if passed"
+        required: false
+        type: string
+        default: ''
+    secrets:
+      GH_TOKEN:
+        description: "A token pre_build_command can use, as GH_TOKEN"
+        required: false
 
 jobs:
   quality:
@@ -58,6 +72,10 @@ jobs:
       python_version: ${{ inputs.python_version }}
       enable_secrets: ${{ inputs.enable_secrets }}
       sync_args: ${{ inputs.sync_args }}
+      ref: ${{ inputs.ref }}
+      pre_build_command: ${{ inputs.pre_build_command }}
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
   testing:
     runs-on: ${{ inputs.runs_on }}
@@ -70,6 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@v7
         with:
@@ -89,6 +108,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ steps.python.outputs.version }}
+      # generates what the install, checks or build need, e.g. content made by another tool
+      - name: Pre-build command
+        if: inputs.pre_build_command != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          PRE_BUILD_COMMAND: ${{ inputs.pre_build_command }}
+        run: bash -e -c "$PRE_BUILD_COMMAND"
       - name: Install dependencies
         # unquoted on purpose: it can hold several arguments
         run: uv sync --locked $SYNC_ARGS
@@ -118,6 +144,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@v7
         with:
@@ -137,6 +164,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ steps.python.outputs.version }}
+      # generates what the install, checks or build need, e.g. content made by another tool
+      - name: Pre-build command
+        if: inputs.pre_build_command != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          PRE_BUILD_COMMAND: ${{ inputs.pre_build_command }}
+        run: bash -e -c "$PRE_BUILD_COMMAND"
       - name: Install dependencies
         # unquoted on purpose: it can hold several arguments
         run: uv sync --locked $SYNC_ARGS
