@@ -9,6 +9,8 @@ import yaml
 
 from forgepy.config import InitConfig, Mode
 from forgepy.core import EXIT_INVALID_CONFIG, init
+from forgepy.features import base
+from forgepy.features.base import FORGEPY_GIT, release_tag
 from forgepy.utils.filesystem import MemoryFileSystem
 
 PROJECT = Path("project")
@@ -165,6 +167,78 @@ def test_init_keeps_an_existing_forgepy_source_even_with_force():
     init(InitConfig(target=PROJECT, force=True), fs)
     doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
     assert doc["tool"]["uv"]["sources"]["forgepy"]["path"] == "../forgepy"
+
+
+def _forgepy_source(fs: MemoryFileSystem) -> dict[str, object]:
+    doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
+    return dict(doc["tool"]["uv"]["sources"]["forgepy"])
+
+
+def test_init_pins_the_forgepy_source_to_the_running_release(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(base, "__version__", "1.2.3")
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    assert _forgepy_source(fs) == {"git": FORGEPY_GIT, "tag": "v1.2.3"}
+
+
+def test_init_leaves_the_forgepy_source_untagged_for_a_build_that_isnt_a_release(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    monkeypatch.setattr(base, "__version__", "1.3.0.dev0")
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    assert _forgepy_source(fs) == {"git": FORGEPY_GIT}
+    assert "isn't a release" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("version", "tag"), [("0.7.0", "v0.7.0"), ("10.20.30", "v10.20.30")])
+def test_release_tag_for_a_release(version: str, tag: str):
+    assert release_tag(version) == tag
+
+
+@pytest.mark.parametrize("version", ["0.8.0.dev1", "0.8.0rc1", "0.7.0+g1234abc", "0.7"])
+def test_release_tag_is_none_for_other_versions(version: str):
+    assert release_tag(version) is None
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_init_tags_an_existing_untagged_forgepy_source(monkeypatch: pytest.MonkeyPatch, *, force: bool):
+    monkeypatch.setattr(base, "__version__", "1.2.3")
+    fs = MemoryFileSystem()
+    existing = f'[project]\nname = "project"\n\n[tool.uv.sources]\nforgepy = {{ git = "{FORGEPY_GIT}" }}\n'
+    fs.write_text(PROJECT / "pyproject.toml", existing)
+    init(InitConfig(target=PROJECT, force=force), fs)
+    assert _forgepy_source(fs) == {"git": FORGEPY_GIT, "tag": "v1.2.3"}
+
+
+def test_init_keeps_an_existing_forgepy_tag_without_force(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(base, "__version__", "1.2.3")
+    fs = MemoryFileSystem()
+    existing = (
+        f'[project]\nname = "project"\n\n[tool.uv.sources]\nforgepy = {{ git = "{FORGEPY_GIT}", tag = "v1.0.0" }}\n'
+    )
+    fs.write_text(PROJECT / "pyproject.toml", existing)
+    init(InitConfig(target=PROJECT), fs)
+    assert _forgepy_source(fs)["tag"] == "v1.0.0"
+
+    init(InitConfig(target=PROJECT, force=True), fs)
+    assert _forgepy_source(fs)["tag"] == "v1.2.3"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        f'{{ git = "{FORGEPY_GIT}", branch = "next" }}',
+        f'{{ git = "{FORGEPY_GIT}", rev = "abc1234" }}',
+        '{ git = "https://github.com/someone/forgepy-fork" }',
+    ],
+)
+def test_init_keeps_a_forgepy_branch_rev_or_fork_even_with_force(monkeypatch: pytest.MonkeyPatch, source: str):
+    monkeypatch.setattr(base, "__version__", "1.2.3")
+    fs = MemoryFileSystem()
+    fs.write_text(PROJECT / "pyproject.toml", f'[project]\nname = "project"\n\n[tool.uv.sources]\nforgepy = {source}\n')
+    init(InitConfig(target=PROJECT, force=True), fs)
+    assert "tag" not in _forgepy_source(fs)
 
 
 def test_init_backend_has_uv_build_system():
