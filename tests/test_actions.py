@@ -362,3 +362,41 @@ def test_accessibility_checker_parses(tmp_path: Path):
     script.write_text(match.group(1), encoding="utf-8")
     assert "AxeBuilder" in match.group(1)
     subprocess.run(["node", "--check", str(script)], check=True)
+
+
+def _debian_build_steps() -> list[YamlDoc]:
+    doc = cast(YamlDoc, yaml.safe_load((WORKFLOWS_DIR / "debian.yml").read_text(encoding="utf-8")))
+    return cast(list[YamlDoc], doc["jobs"]["build-deb"]["steps"])
+
+
+def test_debian_build_installs_its_tools_pinned_and_verified():
+    steps = _debian_build_steps()
+    runs = "\n".join(str(step.get("run", "")) for step in steps)
+    assert not re.search(r"\|\s*(ba)?sh\b", runs)
+    assert "releases/latest" not in runs
+    assert any(str(step.get("uses", "")).startswith("astral-sh/setup-uv@v") for step in steps)
+    nfpm = next(step for step in steps if step.get("name") == "Install nfpm")
+    assert re.fullmatch(r"\d+\.\d+\.\d+", nfpm["env"]["NFPM_VERSION"])
+    assert re.fullmatch(r"[0-9a-f]{64}", nfpm["env"]["NFPM_SHA256"])
+
+
+@pytest.mark.skipif(shutil.which("sha256sum") is None, reason="needs sha256sum")
+def test_debian_build_refuses_an_nfpm_download_that_fails_its_checksum(tmp_path: Path):
+    nfpm = next(step for step in _debian_build_steps() if step.get("name") == "Install nfpm")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    installed = tmp_path / "installed"
+    # curl writes a tampered package; apt-get records whether it was asked to install anything
+    (bin_dir / "curl").write_text('#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\necho tampered > "$2"\n')
+    (bin_dir / "apt-get").write_text(f'#!/bin/sh\ntouch "{installed}"\n')
+    for tool in ("curl", "apt-get"):
+        (bin_dir / tool).chmod(0o755)
+    env = {
+        **os.environ,
+        **nfpm["env"],
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "RUNNER_TEMP": str(tmp_path),
+    }
+    result = subprocess.run(["bash", "-e", "-c", nfpm["run"]], env=env, capture_output=True, check=False)
+    assert result.returncode != 0
+    assert not installed.exists()
