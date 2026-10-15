@@ -152,6 +152,29 @@ def test_init_rejects_invalid_combinations_without_writing():
     assert not fs.exists(PROJECT / "pyproject.toml")
 
 
+@pytest.mark.parametrize("version", ["banana", "3", "3.9", "2.7", "3.13.x", ">=3.13", ""])
+def test_init_rejects_an_invalid_python_version_without_writing(version: str):
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, python_version=version), fs) == EXIT_INVALID_CONFIG
+    assert not fs.exists(PROJECT / "pyproject.toml")
+
+
+def test_init_takes_a_patch_python_version_and_targets_its_minor_in_ruff():
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, python_version="3.12.4"), fs) == 0
+    assert fs.read_text(PROJECT / ".python-version") == "3.12.4\n"
+    assert 'target-version = "py312"' in fs.read_text(PROJECT / "ruff.toml")
+
+
+def test_init_in_a_directory_with_spaces_makes_a_valid_package():
+    fs = MemoryFileSystem()
+    target = Path("My Project")
+    assert init(InitConfig(target=target), fs) == 0
+    doc = tomlkit.parse(fs.read_text(target / "pyproject.toml"))
+    assert doc["project"]["name"] == "my-project"
+    assert fs.exists(target / "src/my_project/__init__.py")
+
+
 def test_init_always_adds_toolchain_from_git_even_without_linting():
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT, linting=False), fs)
