@@ -362,3 +362,27 @@ def test_accessibility_checker_parses(tmp_path: Path):
     script.write_text(match.group(1), encoding="utf-8")
     assert "AxeBuilder" in match.group(1)
     subprocess.run(["node", "--check", str(script)], check=True)
+
+
+def _merge_step() -> YamlDoc:
+    return next(s for s in _jobs("merge.yml")["auto-merge"]["steps"] if "createDispatchEvent" in s["with"]["script"])
+
+
+@pytest.mark.parametrize(
+    "workflow",
+    [
+        workflow_templates.LIBRARY_WORKFLOW,
+        workflow_templates.SERVICE_WORKFLOW,
+        workflow_templates.WEBSITE_WORKFLOW,
+        workflow_templates.DEBIAN_WORKFLOW,
+        (WORKFLOWS_DIR / ".index.yml").read_text(encoding="utf-8"),
+    ],
+    ids=["library", "service", "website", "debian", ".index.yml"],
+)
+def test_auto_merge_dispatch_is_listened_for(workflow: str):
+    """A merge made with GITHUB_TOKEN starts no push run, so merge.yml sends a repository_dispatch instead."""
+    sent = _merge_step()["env"]["DISPATCH_TYPE"]
+    doc: YamlDoc = yaml.safe_load(workflow)
+    on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
+    assert sent
+    assert on_block["repository_dispatch"]["types"] == [sent]
