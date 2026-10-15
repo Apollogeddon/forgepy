@@ -496,3 +496,13 @@ def test_osv_report_passes_when_there_is_nothing_to_report(
     calls = _run_osv_report(tmp_path, status, results, enforce=True)
     assert calls["setFailed"] == []
     assert bool(calls["warning"]) is warned
+
+
+# the author alone would merge someone else's push to Dependabot's branch, and the actor alone
+# a pull request someone else opened that Dependabot then updated
+def test_auto_merge_needs_dependabot_to_open_the_pull_request_and_make_its_latest_change():
+    doc = cast(YamlDoc, yaml.safe_load((WORKFLOWS_DIR / "merge.yml").read_text(encoding="utf-8")))
+    gate = str(doc["jobs"]["auto-merge"]["if"])
+    assert "github.event.pull_request.user.login == 'dependabot[bot]' && " in gate
+    assert "github.actor == 'dependabot[bot]' && " in gate
+    assert "||" not in gate
