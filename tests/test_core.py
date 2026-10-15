@@ -520,3 +520,32 @@ def test_init_codeowners_prefers_the_project_urls():
     )
     init(InitConfig(target=PROJECT), fs)
     assert "* @octo-org\n" in fs.read_text(PROJECT / ".github/CODEOWNERS")
+
+
+class _CountingFileSystem(MemoryFileSystem):
+    def __init__(self) -> None:
+        super().__init__()
+        self.writes: list[Path] = []
+
+    def write_text(self, path: Path, content: str) -> None:
+        self.writes.append(path)
+        super().write_text(path, content)
+
+
+def test_init_leaves_unchanged_managed_files_alone():
+    fs = _CountingFileSystem()
+    assert init(InitConfig(target=PROJECT), fs) == 0
+    fs.writes.clear()
+    assert init(InitConfig(target=PROJECT), fs) == 0
+    assert not [path for path in fs.writes if ".forgepy" in path.parts]
+
+
+def test_init_writes_a_gitignore_once_and_keeps_the_projects_own():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    ignore = fs.read_text(PROJECT / ".gitignore")
+    for entry in (".venv/", "dist/", "junit-report.xml", "coverage.json"):
+        assert entry in ignore
+    fs.write_text(PROJECT / ".gitignore", "custom\n")
+    init(InitConfig(target=PROJECT, force=True), fs)
+    assert fs.read_text(PROJECT / ".gitignore") == "custom\n"

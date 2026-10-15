@@ -2,6 +2,26 @@ from __future__ import annotations
 
 # Plain (non f-string) templates — see workflows.py for why.
 
+# What uv, the generated tasks and the .deb build write; the project's own from then on
+GITIGNORE = """\
+# Python and uv
+__pycache__/
+*.py[oc]
+.venv/
+dist/
+
+# Test and lint output
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.json
+htmlcov/
+junit-report.xml
+
+# Debian packages
+*.deb
+"""
+
 EDITORCONFIG = """\
 root = true
 

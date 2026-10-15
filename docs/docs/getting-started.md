@@ -157,6 +157,7 @@ A default `forgepy init` (backend) produces:
 │   └── __main__.py
 ├── tests/test_placeholder.py
 ├── .editorconfig
+├── .gitignore
 ├── .pre-commit-config.yaml
 ├── .python-version
 ├── pyproject.toml              # build system, poe tasks, dev dependencies
