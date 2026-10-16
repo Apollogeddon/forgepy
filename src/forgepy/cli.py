@@ -72,9 +72,10 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--python",
         dest="python_version",
-        default=DEFAULT_PYTHON_VERSION,
+        default=None,
         metavar="VERSION",
-        help=f"Target Python version (default: {DEFAULT_PYTHON_VERSION})",
+        help="Target Python version (default: the project's .python-version or requires-python, "
+        f"else {DEFAULT_PYTHON_VERSION})",
     )
     init_parser.add_argument(
         "-C", "--path", dest="path", default=".", metavar="DIR", help="Target directory (default: current directory)"

@@ -21,7 +21,7 @@ class DockerFeature(Feature):
         )
         dockerfile = docker_templates.render(
             template,
-            python_version=ctx.cfg.python_version,
+            python_version=ctx.cfg.python,
             package_name=package_name,
         )
         ok = create_file(ctx, "Dockerfile", dockerfile)

@@ -142,7 +142,7 @@ Configure the trusted publisher on your PyPI project's settings page first.
 
 1. Calls `testing.yml`, `merge.yml`, `version.yml`, as `service.yml` does.
 2. **`release-testing`**: as in `library.yml`. *(Needs: version)*
-3. **`build-deb`**: on a new release on `main`, builds inside a `debian:bookworm-slim` container so the virtual environment targets the system `python3` the `.deb` depends on, packages it with nFPM (a pinned release, checked against its SHA-256; uv comes from `astral-sh/setup-uv` as in every other job), and uploads the `.deb` as a workflow artifact. *(Needs: testing, version, release-testing)*
+3. **`build-deb`**: on a new release on `main`, builds inside a `debian:trixie-slim` container so the virtual environment targets the system `python3` (3.13) the `.deb` depends on, packages it with nFPM (a pinned release, checked against its SHA-256; uv comes from `astral-sh/setup-uv` as in every other job), and uploads the `.deb` as a workflow artifact. *(Needs: testing, version, release-testing)*
 
 ## website.yml
 

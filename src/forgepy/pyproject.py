@@ -57,6 +57,30 @@ def package_module_name(doc: TOMLDocument, cwd: Path) -> str:
     return normalize_project_name(project_name(doc, cwd)).replace("-", "_")
 
 
+# requires-python's lower bound: >=3.11, ~=3.11 or ==3.11.*
+_REQUIRES_PYTHON_FLOOR = re.compile(r"(?:>=|~=|==)\s*(\d+\.\d+(?:\.\d+)?)")
+
+
+def project_python_version(fs: FileSystem, cwd: Path) -> str | None:
+    """The project's own Python pin: its .python-version, else requires-python's lower bound."""
+    pin = cwd / ".python-version"
+    if fs.exists(pin):
+        for line in fs.read_text(pin).splitlines():
+            version = line.strip()
+            if version and not version.startswith("#"):
+                return version
+    path = cwd / PYPROJECT_FILENAME
+    if not fs.exists(path):
+        return None
+    try:
+        doc = tomlkit.parse(fs.read_text(path))
+    except TOMLKitError:
+        return None  # load_or_create reports it
+    project: AnyMap = cast(AnyMap, doc).get("project") or {}
+    match = _REQUIRES_PYTHON_FLOOR.search(str(project.get("requires-python") or ""))
+    return match.group(1) if match else None
+
+
 def _default_document(project_dir_name: str, python_version: str) -> TOMLDocument:
     doc = tomlkit.document()
 

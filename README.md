@@ -27,7 +27,7 @@ Forge.py (`forgepy`) is a project-scaffolding CLI for Python. Its `init` command
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/): Forge.py generates uv-managed projects, and every task runs through `uv run`
-- Python 3.13, or the version you pass to `--python`; uv can install it for you
+- Python 3.13, the version you pass to `--python`, or the one your project already pins; uv can install it for you
 - Git, for the generated pre-commit hooks
 
 ## Installation

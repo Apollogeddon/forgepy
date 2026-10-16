@@ -27,7 +27,6 @@ class DebianFeature(Feature):
                 template,
                 deb_name=deb_name,
                 module_name=module_name,
-                python_version=ctx.cfg.python_version,
             )
 
         ok = create_file(ctx, "nfpm.yaml", render(debian_templates.NFPM_YAML))
