@@ -65,4 +65,4 @@ nav:
       - Examples: examples.md
       - Workflows:
           - Overview: workflows/overview.md
-          - Job reference: workflows/reference.md
+          - Pipeline reference: workflows/reference.md

@@ -63,4 +63,4 @@ basedpyright runs in strict mode. Existing `# type: ignore` comments still work,
 
 ### Automated releases
 
-Forge.py uses release-please, through the reusable `version.yml` workflow. Remove any existing version-bumping tooling, such as bump2version, and stop editing the changelog by hand: from now on, Conventional Commits drive releases. `init` starts the release-please manifest at `0.1.0`, so if your project already has a version, set it in `.github/.release.json`.
+Forge.py uses release-please, through the reusable `version.yml` pipeline. Remove any existing version-bumping tooling, such as bump2version, and stop editing the changelog by hand: from now on, Conventional Commits drive releases. `init` starts the release-please manifest at `0.1.0`, so if your project already has a version, set it in `.github/.release.json`.

@@ -66,7 +66,7 @@ Add `--jython` to a backend for scripts that run on Jython 2.7, or `--docker` an
 
 `init` does the following:
 
-- Writes tool configs: `ruff.toml`, `pyrightconfig.json`, `pytest.toml`, `.pre-commit-config.yaml`, the release-please config and `.github/workflows/index.yml`, plus a `Dockerfile`, `nfpm.yaml` or `mkdocs.yml` depending on the mode.
+- Writes tool configs: `ruff.toml`, `pyrightconfig.json`, `pytest.toml`, `.pre-commit-config.yaml`, the release-please config and `.github/workflows/.index.yml`, plus a `Dockerfile`, `nfpm.yaml` or `mkdocs.yml` depending on the mode.
 - Writes the repository files `.editorconfig`, `.gitignore`, `.github/dependabot.yml` and `.github/CODEOWNERS`.
 - Adds tasks such as `lint`, `type`, `test` and `build` to `[tool.poe.tasks]` in `pyproject.toml`.
 - Creates a starter package so `uv sync` and the generated tasks work straight away.
@@ -111,7 +111,7 @@ The full documentation is at [apollogeddon.github.io/forgepy](https://apollogedd
 - [Getting started](https://apollogeddon.github.io/forgepy/getting-started/): requirements, CLI flags and generated tasks.
 - [Configuration](https://apollogeddon.github.io/forgepy/configuration/): the files Forge.py writes and how to change them.
 - [Examples](https://apollogeddon.github.io/forgepy/examples/): common configuration and workflow recipes.
-- [Workflows](https://apollogeddon.github.io/forgepy/workflows/overview/): the reusable GitHub Actions workflows and their inputs.
+- [Workflows](https://apollogeddon.github.io/forgepy/workflows/overview/): the reusable GitHub Actions pipelines, the generated `.index.yml` that calls them, and their inputs.
 - [Migration](https://apollogeddon.github.io/forgepy/migration/): adopting Forge.py in a project that already has tooling.
 
 ## Contributing
