@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  service:
+    uses: apollogeddon/forgepy/.github/workflows/service.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      python_version: '3.12'
+    secrets: inherit

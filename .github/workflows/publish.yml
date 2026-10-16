@@ -1,0 +1,155 @@
+name: publish
+
+# Ships a release: the package to PyPI, files attached to the GitHub release, and their build provenance.
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      working_directory:
+        description: "Directory holding pyproject.toml"
+        required: false
+        type: string
+        default: '.'
+      artifact_name:
+        description: "The build artifact to publish, as library.yml's artifact_name"
+        required: false
+        type: string
+        default: 'dist'
+      package:
+        description: "Publish the build to PyPI through Trusted Publishing; needs id-token: write"
+        required: false
+        type: boolean
+        default: true
+      assets:
+        description: "An artifact whose files to attach to the release tag_name names, e.g. debian.yml's debian-package; needs contents: write"
+        required: false
+        type: string
+        default: ''
+      tag_name:
+        description: "The release to attach assets to, as version.yml's tag_name"
+        required: false
+        type: string
+        default: ''
+      attest:
+        description: "Attest the build provenance of the published build and assets; needs id-token: write and attestations: write"
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      published:
+        description: "Whether the package was published in this run"
+        value: ${{ jobs.package.outputs.published }}
+
+# GitHub checks a called workflow's permissions against its caller's before running any of it, even a job
+# that will be skipped, so a caller grants the union of what the stages ask for. package, which holds the
+# publish token, asks for exactly what it needs; assets and attest ask for nothing and take the caller's grant,
+# so a caller grants contents: write, or attestations: write, only for the stage it turns on.
+
+jobs:
+  package:
+    name: package
+    if: inputs.package
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # PyPI Trusted Publishing (OIDC): no token to store, but configure the trusted publisher on PyPI first
+      id-token: write
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Download the build
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.working_directory }}/dist
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          # no dependency cache in a job holding a publish token, as a poisoned cache could ship
+          enable-cache: false
+      # publishes the tested build artifact as is: no install, so no dependency code runs while the token is held
+      - name: Publish to PyPI
+        id: publish
+        run: |
+          uv publish
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+  assets:
+    name: assets
+    if: inputs.assets != ''
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    steps:
+      - name: Download the assets
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.assets }}
+          path: ${{ runner.temp }}/assets
+      # Through the API rather than the gh CLI, which a self-hosted runner may not have
+      - name: Upload the assets to the release
+        uses: actions/github-script@v9
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          ASSETS: ${{ runner.temp }}/assets
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const tag = process.env.TAG_NAME;
+            if (!tag) throw new Error('assets needs tag_name, the release to attach them to');
+            const { data: release } = await github.rest.repos.getReleaseByTag({ ...context.repo, tag });
+            for (const name of fs.readdirSync(process.env.ASSETS)) {
+              const file = path.join(process.env.ASSETS, name);
+              if (!fs.statSync(file).isFile()) continue;
+              // a re-run replaces what an earlier attempt attached
+              const existing = release.assets.find((asset) => asset.name === name);
+              if (existing) await github.rest.repos.deleteReleaseAsset({ ...context.repo, asset_id: existing.id });
+              await github.rest.repos.uploadReleaseAsset({
+                ...context.repo,
+                release_id: release.id,
+                name,
+                data: fs.readFileSync(file),
+                headers: { 'content-type': 'application/octet-stream', 'content-length': fs.statSync(file).size },
+              });
+              core.info(`Attached ${name} to ${tag}`);
+            }
+
+  # the files the other stages shipped, so they can be checked with gh attestation verify
+  attest:
+    name: attest
+    needs: [package, assets]
+    if: >-
+      !cancelled() && inputs.attest &&
+      !contains(needs.*.result, 'failure') && contains(needs.*.result, 'success')
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    steps:
+      - name: Download the build
+        if: needs.package.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ runner.temp }}/attest
+      - name: Download the assets
+        if: needs.assets.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.assets }}
+          path: ${{ runner.temp }}/attest
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ runner.temp }}/attest/*

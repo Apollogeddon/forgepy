@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import tomlkit
@@ -18,6 +19,12 @@ from forgepy.utils.filesystem import MemoryFileSystem
 
 PROJECT = Path("project")
 COOLDOWN_DAYS = 3
+INDEX = PROJECT / ".github/workflows/.index.yml"
+FORGEPY = "apollogeddon/forgepy/.github/workflows"
+
+
+def _workflow(fs: MemoryFileSystem) -> dict[str, Any]:
+    return cast(dict[str, Any], yaml.safe_load(fs.read_text(INDEX)))
 
 
 def test_init_creates_expected_files_for_backend():
@@ -117,25 +124,32 @@ def test_init_backend_docker_creates_uv_based_dockerfile():
 
 
 @pytest.mark.parametrize(
-    ("mode", "debian", "job"),
-    [(Mode.BACKEND, False, "service"), (Mode.WEBSITE, False, "website"), (Mode.BACKEND, True, "debian")],
+    ("mode", "debian", "checks"),
+    [(Mode.BACKEND, False, "service"), (Mode.WEBSITE, False, "website"), (Mode.BACKEND, True, "service")],
 )
-def test_init_docker_adds_docker_job_after_pipeline(mode: Mode, debian: bool, job: str):
+def test_init_docker_adds_docker_job_after_the_checks(mode: Mode, *, debian: bool, checks: str):
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT, mode=mode, debian=debian, docker=True), fs)
-    workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
-    docker = workflow["jobs"]["docker"]
-    assert "/docker.yml@" in docker["uses"]
-    assert docker["needs"] == job
+    docker = _workflow(fs)["jobs"]["docker"]
+    assert docker["uses"] == f"{FORGEPY}/docker.yml@main"
+    assert docker["needs"] == ["version", checks]
     assert docker["permissions"]["packages"] == "write"
-    assert f"needs.{job}.outputs.version" in docker["with"]["version"]
+    assert docker["with"]["version"] == "${{ needs.version.outputs.version }}"
 
 
 def test_init_without_docker_has_no_docker_job():
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT), fs)
-    workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
-    assert list(workflow["jobs"]) == ["service"]
+    assert list(_workflow(fs)["jobs"]) == ["version", "service", "patch", "merge"]
+
+
+def test_init_packages_a_debian_backend_after_its_checks_and_attaches_it_to_the_release():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, debian=True), fs)
+    jobs = _workflow(fs)["jobs"]
+    assert jobs["service"]["uses"] == f"{FORGEPY}/service.yml@main"
+    assert jobs["debian"]["needs"] == "service"
+    assert jobs["publish"]["with"]["assets"] == "debian-package"
 
 
 def test_init_website_docker_creates_nginx_dockerfile():
@@ -280,18 +294,19 @@ def test_init_website_has_no_build_system():
     assert "build-system" not in tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
 
 
-@pytest.mark.parametrize(
-    ("cfg", "key"),
-    [
-        (InitConfig(target=PROJECT, testing=False), "run_tests"),
-        (InitConfig(target=PROJECT, versioning=False), "enable_versioning"),
-    ],
-)
-def test_init_disabled_features_switch_off_pipeline_steps(cfg: InitConfig, key: str):
+def test_init_no_testing_switches_off_the_test_stage():
     fs = MemoryFileSystem()
-    init(cfg, fs)
-    workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
-    assert workflow["jobs"]["service"]["with"][key] is False
+    init(InitConfig(target=PROJECT, testing=False), fs)
+    assert _workflow(fs)["jobs"]["service"]["with"]["run_tests"] is False
+
+
+def test_init_no_versioning_leaves_out_the_version_job():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT, versioning=False), fs)
+    jobs = _workflow(fs)["jobs"]
+    # without versioning there's no release to wait for, so the checks run on every push
+    assert "version" not in jobs
+    assert "needs" not in jobs["service"]
 
 
 def test_init_docker_disabled_removes_dockerfile_with_force():
@@ -315,8 +330,9 @@ def test_init_website_generates_website_workflow():
     fs = MemoryFileSystem()
     cfg = InitConfig(target=PROJECT, mode=Mode.WEBSITE)
     init(cfg, fs)
-    content = fs.read_text(PROJECT / ".github/workflows/index.yml")
-    assert "website.yml@main" in content
+    jobs = _workflow(fs)["jobs"]
+    assert jobs["website"]["uses"] == f"{FORGEPY}/website.yml@main"
+    assert jobs["pages"]["uses"] == f"{FORGEPY}/pages.yml@main"
 
 
 def test_init_debian_creates_packaging_files():
@@ -326,8 +342,7 @@ def test_init_debian_creates_packaging_files():
     assert fs.exists(PROJECT / "nfpm.yaml")
     assert fs.exists(PROJECT / "packaging/project.service")
     assert fs.exists(PROJECT / "packaging/postinstall.sh")
-    content = fs.read_text(PROJECT / ".github/workflows/index.yml")
-    assert "debian.yml@main" in content
+    assert _workflow(fs)["jobs"]["debian"]["uses"] == f"{FORGEPY}/debian.yml@main"
 
 
 def test_init_debian_disabled_removes_packaging_files_with_force():
@@ -394,17 +409,17 @@ def test_init_release_config_bumps_the_normalized_name_in_uv_lock():
 def test_init_generates_least_privilege_ci_that_never_cancels_main(cfg: InitConfig):
     fs = MemoryFileSystem()
     init(cfg, fs)
-    workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
-    assert "refs/heads/main" in workflow["concurrency"]["cancel-in-progress"]
+    workflow = _workflow(fs)
+    # a run outside a pull request has a group of its own, so one on main is never cancelled
+    assert "github.head_ref || github.run_id" in workflow["concurrency"]["group"]
     for name, job in workflow["jobs"].items():
         # the called workflows only use GITHUB_TOKEN, which they get without inheriting every secret
         assert "secrets" not in job, f"{name} passes secrets"
-        # only PyPI trusted publishing and GitHub Pages need an OIDC token
-        if name not in ("library", "website"):
-            assert "id-token" not in job.get("permissions", {}), f"{name} asks for id-token"
-    # every pipeline job upgrades vulnerable packages on main
-    pipeline = next(job for name, job in workflow["jobs"].items() if name != "docker")
-    assert pipeline["with"]["auto_patch"] is True
+        # only PyPI Trusted Publishing and GitHub Pages need an OIDC token
+        if name not in ("publish", "pages"):
+            assert "id-token" not in job["permissions"], f"{name} asks for id-token"
+    # vulnerable packages are upgraded on main, weekly and on a manual run
+    assert workflow["jobs"]["patch"]["uses"] == f"{FORGEPY}/patch.yml@main"
 
 
 def test_init_jython_installs_only_the_dev_tools():
@@ -463,8 +478,7 @@ def test_init_jython_checks_compatibility_with_vermin():
 def test_init_jython_workflow_skips_the_build():
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT, jython=True), fs)
-    workflow = yaml.safe_load(fs.read_text(PROJECT / ".github/workflows/index.yml"))
-    assert workflow["jobs"]["service"]["with"]["run_build"] is False
+    assert _workflow(fs)["jobs"]["service"]["with"]["run_build"] is False
 
 
 def test_init_without_jython_has_no_jython_files():
@@ -629,3 +643,73 @@ def test_init_debian_depends_on_the_python_the_venv_was_built_with(tmp_path: Pat
     )
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "stamped").read_text().split() == ["1.2.3", "3.13", "3.14"]
+
+
+class TestOldIndexWorkflow:
+    """An index.yml an earlier forgepy generated, which .index.yml replaces."""
+
+    old = PROJECT / ".github/workflows/index.yml"
+    legacy = (Path(__file__).parent / "fixtures/legacy/backend.yml").read_text(encoding="utf-8")
+    changed = legacy.replace("    with:\n", "    with:\n      runs_on: xerus\n")
+
+    def _fs(self, content: str) -> MemoryFileSystem:
+        fs = MemoryFileSystem()
+        fs.mkdir(self.old.parent, parents=True)
+        fs.write_text(self.old, content)
+        return fs
+
+    def test_is_removed_when_its_exactly_as_init_wrote_it(self, capsys: pytest.CaptureFixture[str]):
+        fs = self._fs(self.legacy)
+        assert init(InitConfig(target=PROJECT), fs) == 0
+        assert not fs.exists(self.old)
+        assert fs.exists(INDEX)
+        assert "Removed .github/workflows/index.yml" in capsys.readouterr().out
+
+    def test_is_kept_with_a_warning_once_its_been_changed(self, capsys: pytest.CaptureFixture[str]):
+        fs = self._fs(self.changed)
+        assert init(InitConfig(target=PROJECT), fs) == 0
+        assert fs.read_text(self.old) == self.changed
+        out = capsys.readouterr().out
+        assert "has been changed since init wrote it" in out
+        assert "use --force to delete" in out
+
+    def test_is_removed_with_force_once_its_been_changed(self):
+        fs = self._fs(self.changed)
+        assert init(InitConfig(target=PROJECT, force=True), fs) == 0
+        assert not fs.exists(self.old)
+
+    def test_is_kept_on_a_dry_run(self):
+        fs = self._fs(self.legacy)
+        assert init(InitConfig(target=PROJECT, dry_run=True), fs) == 0
+        assert fs.exists(self.old)
+
+    # without a new workflow written, removing the old one would leave the project with no CI
+    def test_is_kept_when_index_yml_was_kept(self):
+        fs = self._fs(self.legacy)
+        fs.write_text(INDEX, "name: own\n")
+        assert init(InitConfig(target=PROJECT), fs) == 0
+        assert fs.exists(self.old)
+        assert fs.read_text(INDEX) == "name: own\n"
+
+    def test_is_never_removed_when_its_the_projects_own(self, capsys: pytest.CaptureFixture[str]):
+        own = "jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: uv run pytest\n"
+        fs = self._fs(own)
+        assert init(InitConfig(target=PROJECT, force=True), fs) == 0
+        assert fs.read_text(self.old) == own
+        assert "Left .github/workflows/index.yml" in capsys.readouterr().out
+
+    def test_is_left_with_a_warning_when_it_cant_be_read(self, capsys: pytest.CaptureFixture[str]):
+        old = self.old
+
+        class Unreadable(MemoryFileSystem):
+            def read_text(self, path: Path) -> str:
+                if path == old:
+                    raise PermissionError(13, "Permission denied")
+                return super().read_text(path)
+
+        fs = Unreadable()
+        fs.mkdir(old.parent, parents=True)
+        fs.write_text(old, self.legacy)
+        assert init(InitConfig(target=PROJECT), fs) == 0
+        assert fs.exists(old)
+        assert "Left .github/workflows/index.yml, which couldn't be read" in capsys.readouterr().out

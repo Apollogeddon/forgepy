@@ -1,0 +1,77 @@
+name: patch
+
+# Weekly: refreshes the configs forgepy manages, upgrades the packages in uv.lock with known
+# vulnerabilities, and commits each to main.
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      working_directory:
+        description: "Directory holding pyproject.toml and uv.lock"
+        required: false
+        type: string
+        default: '.'
+
+jobs:
+  update:
+    name: update
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      # the branch's tip rather than the triggering commit, so a patch committed earlier in the run is kept;
+      # keeps its credentials, to push the patch
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          # no dependency cache in a job that pushes to main
+          enable-cache: false
+      # a Dependabot bump of forgepy leaves the configs it manages for this job to refresh
+      - name: Refresh forgepy's configs
+        if: hashFiles(format('{0}/.forgepy/**', inputs.working_directory)) != ''
+        run: uv run --locked forgepy sync
+      # sync is the only change in this checkout so far
+      - name: Commit forgepy's configs
+        if: hashFiles(format('{0}/.forgepy/**', inputs.working_directory)) != ''
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "chore(deps): refresh the configs forgepy manages"
+          file_pattern: '.forgepy/*'
+          repository: ${{ inputs.working_directory }}
+      # osv-scanner can't fix uv.lock in place, so it finds the vulnerable packages and uv upgrades
+      # just those, transitive ones included, within the ranges pyproject.toml already allows
+      - name: Upgrade vulnerable packages
+        run: |
+          curl -sSL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o "$RUNNER_TEMP/osv-scanner"
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          # 1: vulnerabilities found; 128: nothing to scan besides the project itself; anything else fails the job
+          status=0
+          "$RUNNER_TEMP/osv-scanner" scan source -L uv.lock --format json --output-file "$RUNNER_TEMP/osv.json" || status=$?
+          if [ "$status" -eq 128 ]; then exit 0; fi
+          if [ "$status" -gt 1 ]; then exit "$status"; fi
+          mapfile -t packages < <(jq -r '[.results[]?.packages[]? | select(.package.ecosystem == "PyPI") | .package.name | ascii_downcase | gsub("[-_.]+"; "-")] | unique[]' "$RUNNER_TEMP/osv.json")
+          if [ "${#packages[@]}" -eq 0 ]; then exit 0; fi
+          args=()
+          for package in "${packages[@]}"; do args+=(--upgrade-package "$package"); done
+          # --no-build: resolve from published metadata only, so no package's build code runs in this job
+          uv lock --no-build "${args[@]}"
+      - name: Commit the patches
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "fix(deps): upgrade packages with known vulnerabilities via osv-scanner"
+          file_pattern: 'uv.lock'
+          repository: ${{ inputs.working_directory }}

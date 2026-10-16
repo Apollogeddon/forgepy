@@ -4,6 +4,7 @@ dependency at this repo since forgepy isn't on PyPI yet."""
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from pathlib import Path
 
 import pytest
 import tomlkit
+import yaml
 
 from forgepy.config import DEBIAN_IMAGE, DEBIAN_PYTHON_VERSION
 
@@ -79,41 +81,68 @@ def _scaffold(tmp_path: Path, *args: str) -> Path:
     return tmp_path
 
 
+# the steps in the check pipeline's stages that set up the runner rather than check the project
+_RUNNER_STEPS = {"Resolve the Python version", "Run the pre-build command"}
+
+
+def _run_check_stages(project: Path) -> list[str]:
+    """Runs what the generated .index.yml's check pipeline runs: its lint, test and build stages' commands,
+    read from this repository's pipeline with the inputs .index.yml passes, as @main serves them."""
+    index = yaml.safe_load((project / ".github/workflows/.index.yml").read_text(encoding="utf-8"))
+    job = next(job for name, job in index["jobs"].items() if name in ("library", "service", "website"))
+    match = re.fullmatch(r"apollogeddon/forgepy/\.github/workflows/([\w-]+\.yml)@main", job["uses"])
+    assert match, job["uses"]
+    pipeline = yaml.safe_load((REPO_ROOT / ".github/workflows" / match.group(1)).read_text(encoding="utf-8"))
+    declared = pipeline[True]["workflow_call"]["inputs"]
+    inputs = {name: spec["default"] for name, spec in declared.items()} | job.get("with", {})
+    env = {**os.environ, "SYNC_ARGS": inputs["sync_args"], "BUILD_COMMAND": inputs["build_command"]}
+    ran: list[str] = []
+    for stage in ("lint", "test", "build"):
+        if pipeline["jobs"][stage].get("if") in ("inputs.run_tests", "inputs.run_build") and not inputs.get(
+            pipeline["jobs"][stage]["if"].removeprefix("inputs.")
+        ):
+            continue
+        for step in pipeline["jobs"][stage]["steps"]:
+            if "run" not in step or step["name"] in _RUNNER_STEPS:
+                continue
+            # a step guarded on a file forgepy writes runs when the project has it
+            guard = re.match(r"hashFiles\(format\('\{0\}/([^']+)'", step.get("if", ""))
+            if guard and not list(project.glob(guard.group(1))):
+                continue
+            _run(["bash", "-e", "-c", step["run"]], cwd=project, env=env)
+            ran.append(f"{stage} / {step['name']}")
+    return ran
+
+
 def test_backend_scaffold_passes_its_own_toolchain(tmp_path: Path):
     project = _scaffold(tmp_path, "--backend")
+    # formats the scaffold, as the pre-commit hook does before its first commit reaches CI
     _run(["uv", "run", "poe", "lint"], cwd=project)
-    _run(["uv", "run", "poe", "type"], cwd=project)
-    _run(["uv", "run", "poe", "test"], cwd=project)
+    assert "lint / Check forgepy's configs" in _run_check_stages(project)
     _run(["uv", "run", "poe", "start"], cwd=project)
-    _run(["uv", "run", "poe", "build"], cwd=project)
-    _run(["uv", "run", "poe", "sync-check"], cwd=project)
 
 
 def test_library_scaffold_passes_its_own_toolchain(tmp_path: Path):
     project = _scaffold(tmp_path, "--library")
     _run(["uv", "run", "poe", "lint"], cwd=project)
-    _run(["uv", "run", "poe", "type"], cwd=project)
-    _run(["uv", "run", "poe", "test"], cwd=project)
-    _run(["uv", "run", "poe", "build"], cwd=project)
+    assert "build / Build" in _run_check_stages(project)
     _run(["uv", "run", "poe", "check-dist"], cwd=project)
 
 
 def test_website_scaffold_passes_its_own_toolchain(tmp_path: Path):
     project = _scaffold(tmp_path, "--website")
     _run(["uv", "run", "poe", "lint"], cwd=project)
-    _run(["uv", "run", "poe", "type"], cwd=project)
-    _run(["uv", "run", "poe", "test"], cwd=project)
-    _run(["uv", "run", "poe", "build"], cwd=project)
-    _run(["uv", "run", "poe", "sync-check"], cwd=project)
+    assert "build / Build" in _run_check_stages(project)
+    assert (project / "dist" / "index.html").is_file()
 
 
 def test_jython_scaffold_passes_its_own_toolchain(tmp_path: Path):
     project = _scaffold(tmp_path, "--jython")
     _run(["uv", "run", "poe", "lint"], cwd=project)
-    _run(["uv", "run", "poe", "type"], cwd=project)
-    _run(["uv", "run", "poe", "compat"], cwd=project)
-    _run(["uv", "run", "poe", "test"], cwd=project)
-    _run(["uv", "run", "poe", "sync-check"], cwd=project)
+    ran = _run_check_stages(project)
+    assert "lint / Check Jython 2.7 compatibility" in ran
+    # its scripts are deployed as they are, so the build stage is off
+    assert not any(step.startswith("build /") for step in ran)
 
 
 def test_jython_compat_rejects_python_3_syntax(tmp_path: Path):
@@ -128,8 +157,8 @@ def test_backend_no_testing_scaffold_passes_its_own_toolchain(tmp_path: Path):
     crashing basedpyright when --no-testing skipped creating tests/."""
     project = _scaffold(tmp_path, "--backend", "--no-testing")
     _run(["uv", "run", "poe", "lint"], cwd=project)
-    _run(["uv", "run", "poe", "type"], cwd=project)
-    _run(["uv", "run", "poe", "build"], cwd=project)
+    ran = _run_check_stages(project)
+    assert not any(step.startswith("test /") for step in ran)
 
 
 def test_backend_debian_scaffold_syncs_and_validates(tmp_path: Path):
@@ -144,7 +173,7 @@ DEBIAN_PYTHON = shutil.which(f"python{DEBIAN_PYTHON_VERSION}")
 
 @pytest.mark.skipif(DEBIAN_PYTHON is None, reason=f"no system Python {DEBIAN_PYTHON_VERSION}, {DEBIAN_IMAGE}'s")
 def test_backend_debian_builds_its_venv_on_the_build_images_python(tmp_path: Path):
-    """Runs debian.yml's build-deb steps against the Python its image ships, with a stand-in for nfpm."""
+    """Runs debian.yml's build stage against the Python its image ships, with a stand-in for nfpm."""
     assert DEBIAN_PYTHON is not None
     project = _scaffold(tmp_path, "--backend", "--debian")
     shutil.rmtree(project / ".venv")

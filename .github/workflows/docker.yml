@@ -1,10 +1,12 @@
-name: Docker Image
+name: docker
+
+# Builds a multi-platform image and, on a release, pushes it to GitHub Container Registry.
 
 on:
   workflow_call:
     inputs:
       runs_on:
-        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        description: "Runner label for the remote BuildKit build; the other builds need GitHub's runners"
         required: false
         type: string
         default: 'ubuntu-latest'
@@ -29,6 +31,7 @@ on:
         type: string
         default: ''
       working_directory:
+        description: "Directory holding the Dockerfile"
         required: false
         type: string
         default: '.'
@@ -38,66 +41,61 @@ on:
         type: boolean
         default: true
       buildkit_endpoint:
-        description: "A remote BuildKit (e.g. tcp://runner.builder:1234) that builds every platform in one job on runs_on, emulating the ones it can't run natively; empty keeps the per-platform jobs"
+        description: "A remote BuildKit (e.g. tcp://runner.builder:1234) that builds every platform in one job on runs_on, emulating the ones it can't run natively, and pushes the tagged image itself"
         required: false
         type: string
         default: ''
 
-# Jobs inherit the calling job's token, which needs packages: write to push.
-
 jobs:
-  prepare:
-    runs-on: ${{ inputs.runs_on }}
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
-      image: ${{ steps.image.outputs.image }}
+  # Every platform but a native arm64 one, in one build: amd64 natively and the rest with QEMU, or all of them on
+  # the remote BuildKit. Pushed images go up untagged by digest, and push tags the combined manifest.
+  build:
+    name: build
+    # QEMU and buildx's default driver need a Docker daemon, which self-hosted runners don't have
+    runs-on: ${{ inputs.buildkit_endpoint != '' && inputs.runs_on || 'ubuntu-latest' }}
+    # emulated platforms build several times slower than native ones
+    timeout-minutes: ${{ inputs.buildkit_endpoint != '' && 120 || 60 }}
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - name: Resolve image name
-        id: image
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Resolve the image and platforms
+        id: plan
         env:
           IMAGE: ${{ inputs.image }}
           REPOSITORY: ${{ github.repository }}
+          PLATFORMS: ${{ inputs.platforms }}
+          NATIVE_ARM: ${{ inputs.native_arm }}
+          ENDPOINT: ${{ inputs.buildkit_endpoint }}
         run: |
           image="${IMAGE:-ghcr.io/$REPOSITORY}"
           # GHCR rejects uppercase repository names
           echo "image=${image,,}" >> "$GITHUB_OUTPUT"
-      - name: Build platform matrix
-        id: matrix
-        env:
-          PLATFORMS: ${{ inputs.platforms }}
-          NATIVE_ARM: ${{ inputs.native_arm }}
-        run: |
-          # amd64 and (optionally) arm64 build natively; every other platform is emulated with QEMU
-          matrix=$(jq -cn --arg platforms "$PLATFORMS" --arg native_arm "$NATIVE_ARM" '
-            [ $platforms | split(",")[] | gsub("\\s"; "") | select(length > 0)
-              | . as $p
-              | ($p == "linux/arm64" and $native_arm == "true") as $arm
-              | { platform: $p,
-                  runner: (if $arm then "ubuntu-24.04-arm" else "ubuntu-latest" end),
-                  emulate: ($p != "linux/amd64" and ($arm | not)),
-                  slug: ($p | gsub("/"; "-")) } ]
-            | { include: . }')
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          IFS=, read -ra requested <<< "${PLATFORMS//[[:space:]]/}"
+          platforms=()
+          for platform in "${requested[@]}"; do
+            [ -n "$platform" ] || continue
+            # build (arm64) builds it on a native Arm runner
+            if [ "$platform" = linux/arm64 ] && [ "$NATIVE_ARM" = true ] && [ -z "$ENDPOINT" ]; then continue; fi
+            platforms+=("$platform")
+          done
+          echo "platforms=$(IFS=,; echo "${platforms[*]}")" >> "$GITHUB_OUTPUT"
+          emulate=false
+          for platform in "${platforms[@]}"; do [ "$platform" = linux/amd64 ] || emulate=true; done
+          echo "emulate=$emulate" >> "$GITHUB_OUTPUT"
 
-  build:
-    if: inputs.buildkit_endpoint == ''
-    needs: [prepare]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
       - name: Set up QEMU
-        if: matrix.emulate
+        if: inputs.buildkit_endpoint == '' && steps.plan.outputs.emulate == 'true'
         uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
+      - name: Set up Buildx
+        if: inputs.buildkit_endpoint == '' && steps.plan.outputs.platforms != ''
+        uses: docker/setup-buildx-action@v4
       - name: Log in to GHCR
-        if: inputs.push
+        if: inputs.buildkit_endpoint == '' && inputs.push && steps.plan.outputs.platforms != ''
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -105,122 +103,64 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build
         id: build
+        if: inputs.buildkit_endpoint == '' && steps.plan.outputs.platforms != ''
         uses: docker/build-push-action@v7
         with:
           context: ${{ inputs.working_directory }}
-          platforms: ${{ matrix.platform }}
-          cache-from: type=gha,scope=docker-${{ matrix.slug }}
-          cache-to: type=gha,mode=max,scope=docker-${{ matrix.slug }}
-          # Per-platform images are pushed untagged by digest; the merge job tags the combined manifest
-          outputs: ${{ inputs.push && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', needs.prepare.outputs.image) || 'type=cacheonly' }}
+          platforms: ${{ steps.plan.outputs.platforms }}
+          cache-from: type=gha,scope=docker-build
+          cache-to: type=gha,mode=max,scope=docker-build
+          outputs: ${{ inputs.push && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', steps.plan.outputs.image) || 'type=cacheonly' }}
           provenance: ${{ inputs.push && 'mode=max' || 'false' }}
           sbom: ${{ inputs.push }}
-      - name: Export digest
-        if: inputs.push
+      - name: Export the digest
+        if: inputs.buildkit_endpoint == '' && inputs.push && steps.plan.outputs.platforms != ''
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           mkdir -p "$RUNNER_TEMP/digests"
           touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
-      - name: Upload digest
-        if: inputs.push
+      - name: Upload the digest
+        if: inputs.buildkit_endpoint == '' && inputs.push && steps.plan.outputs.platforms != ''
         uses: actions/upload-artifact@v7
         with:
-          name: docker-digest-${{ matrix.slug }}
+          name: docker-digest-build
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
 
-  merge:
-    if: inputs.push && inputs.buildkit_endpoint == ''
-    needs: [prepare, build]
-    # Needs a Docker daemon (docker login, buildx's default driver), which self-hosted runners don't have.
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v8
-        with:
-          path: ${{ runner.temp }}/digests
-          pattern: docker-digest-*
-          merge-multiple: true
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v4
-      - name: Compute tags
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ needs.prepare.outputs.image }}
-          tags: |
-            type=semver,pattern={{version}},value=${{ inputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
-            type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
-            type=sha
-            type=raw,value=latest
-      - name: Create multi-platform manifest
-        working-directory: ${{ runner.temp }}/digests
-        env:
-          IMAGE: ${{ needs.prepare.outputs.image }}
-        run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf "$IMAGE@sha256:%s " *)
-      - name: Inspect image
-        env:
-          IMAGE: ${{ needs.prepare.outputs.image }}
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: docker buildx imagetools inspect "$IMAGE:$VERSION"
-
-  # One job for every platform on a remote BuildKit, which pushes the tagged multi-platform image itself, so neither
-  # QEMU set-up nor the merge job's Docker daemon is needed; the BuildKit host must have emulators for foreign platforms.
-  build-remote:
-    if: inputs.buildkit_endpoint != ''
-    needs: [prepare]
-    runs-on: ${{ inputs.runs_on }}
-    # Emulated platforms build several times slower than native ones.
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
       # There's no Docker daemon for docker login, so write the credentials buildx reads instead.
-      - name: Registry credentials
-        if: inputs.push
+      - name: Write the registry credentials
+        if: inputs.buildkit_endpoint != '' && inputs.push
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
         run: |
           mkdir -p ~/.docker
           printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$(printf '%s:%s' "$ACTOR" "$TOKEN" | base64 -w0)" > ~/.docker/config.json
-
       - name: Use the remote BuildKit
+        if: inputs.buildkit_endpoint != ''
         env:
           ENDPOINT: ${{ inputs.buildkit_endpoint }}
         run: docker buildx create --name forgepy --driver remote "$ENDPOINT" --use
-
-      - name: Compute tags
-        if: inputs.push
+      - name: Compute the tags
+        if: inputs.buildkit_endpoint != '' && inputs.push
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ needs.prepare.outputs.image }}
+          images: ${{ steps.plan.outputs.image }}
           tags: |
             type=semver,pattern={{version}},value=${{ inputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
             type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
             type=sha
             type=raw,value=latest
-
       # A shared BuildKit's cache could hold layers another repository's job planted, so pushed images build without it.
-      - name: Build
+      - name: Build on the remote BuildKit
+        if: inputs.buildkit_endpoint != ''
         working-directory: ${{ inputs.working_directory }}
         env:
-          PLATFORMS: ${{ inputs.platforms }}
+          PLATFORMS: ${{ steps.plan.outputs.platforms }}
           PUSH: ${{ inputs.push }}
         run: |
           args=(--platform "$PLATFORMS")
@@ -232,16 +172,142 @@ jobs:
             args+=(--output type=cacheonly)
           fi
           docker buildx build "${args[@]}" .
-
-      - name: Inspect image
-        if: inputs.push
+      - name: Inspect the image
+        if: inputs.buildkit_endpoint != '' && inputs.push
         env:
-          IMAGE: ${{ needs.prepare.outputs.image }}
+          IMAGE: ${{ steps.plan.outputs.image }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: docker buildx imagetools inspect "$IMAGE:$VERSION"
-
       - name: Forget the credentials
-        if: always()
+        if: always() && inputs.buildkit_endpoint != ''
         run: |
           rm -f ~/.docker/config.json
           docker buildx rm forgepy || true
+
+  build-arm64:
+    name: build (arm64)
+    if: inputs.buildkit_endpoint == '' && inputs.native_arm && contains(inputs.platforms, 'linux/arm64')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Resolve the image
+        id: plan
+        env:
+          IMAGE: ${{ inputs.image }}
+          REPOSITORY: ${{ github.repository }}
+          PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          image="${IMAGE:-ghcr.io/$REPOSITORY}"
+          echo "image=${image,,}" >> "$GITHUB_OUTPUT"
+          # contains() also matched a longer name, such as linux/arm64/v8
+          IFS=, read -ra requested <<< "${PLATFORMS//[[:space:]]/}"
+          wanted=false
+          for platform in "${requested[@]}"; do [ "$platform" != linux/arm64 ] || wanted=true; done
+          echo "wanted=$wanted" >> "$GITHUB_OUTPUT"
+      - name: Set up Buildx
+        if: steps.plan.outputs.wanted == 'true'
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        if: steps.plan.outputs.wanted == 'true' && inputs.push
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build
+        id: build
+        if: steps.plan.outputs.wanted == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.working_directory }}
+          platforms: linux/arm64
+          cache-from: type=gha,scope=docker-build-arm64
+          cache-to: type=gha,mode=max,scope=docker-build-arm64
+          outputs: ${{ inputs.push && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', steps.plan.outputs.image) || 'type=cacheonly' }}
+          provenance: ${{ inputs.push && 'mode=max' || 'false' }}
+          sbom: ${{ inputs.push }}
+      - name: Export the digest
+        if: steps.plan.outputs.wanted == 'true' && inputs.push
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - name: Upload the digest
+        if: steps.plan.outputs.wanted == 'true' && inputs.push
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-digest-arm64
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Tags one manifest holding every platform the builds pushed; the remote BuildKit build pushed its own.
+  push:
+    name: push
+    needs: [build, build-arm64]
+    if: >-
+      !cancelled() && inputs.push && inputs.buildkit_endpoint == '' &&
+      needs.build.result == 'success' && needs.build-arm64.result != 'failure'
+    # Needs a Docker daemon (docker login, buildx's default driver), which self-hosted runners don't have.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    steps:
+      - name: Resolve the image
+        id: plan
+        env:
+          IMAGE: ${{ inputs.image }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          image="${IMAGE:-ghcr.io/$REPOSITORY}"
+          echo "image=${image,,}" >> "$GITHUB_OUTPUT"
+      - name: Download the digests
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: docker-digest-*
+          merge-multiple: true
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Compute the tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.plan.outputs.image }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ inputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
+            type=semver,pattern={{major}},value=${{ inputs.version }},enable=${{ !startsWith(inputs.version, '0.') }}
+            type=sha
+            type=raw,value=latest
+      # each digest is a pushed image or index; the combined manifest takes every platform in them
+      - name: Push to GHCR
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ steps.plan.outputs.image }}
+        run: |
+          mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          args=()
+          for tag in "${tags[@]}"; do args+=(-t "$tag"); done
+          for digest in *; do args+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${args[@]}"
+      - name: Inspect the image
+        env:
+          IMAGE: ${{ steps.plan.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: docker buildx imagetools inspect "$IMAGE:$VERSION"

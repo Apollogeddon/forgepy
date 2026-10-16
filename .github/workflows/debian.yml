@@ -1,126 +1,28 @@
-name: Python Debian
+name: debian
+
+# Packages a service as a .deb with nfpm, built against Debian's own Python, and checks the package.
 
 on:
   workflow_call:
     inputs:
       runs_on:
-        description: "Runner label for every job, e.g. a self-hosted scale set's"
+        description: "Runner label for the test stage; the build stage is a container job, which needs GitHub's runners"
         required: false
         type: string
         default: 'ubuntu-latest'
-      test_on_push:
-        description: "Run the checks on pushes too; false runs them on pull requests (and scheduled runs) only"
-        required: false
-        type: boolean
-        default: true
-      test_release_prs:
-        description: "Run the checks on release-please's release pull requests"
-        required: false
-        type: boolean
-        default: true
-      enable_secrets:
-        required: false
-        type: boolean
-        default: true
-      auto_patch:
-        description: "On main, upgrade packages with known vulnerabilities in uv.lock and commit the result"
-        required: false
-        type: boolean
-        default: true
-      python_version:
-        required: false
-        type: string
-        description: "Python version; empty reads the project's .python-version, else Python 3.13"
-        default: ''
       working_directory:
+        description: "Directory holding pyproject.toml and nfpm.yaml"
         required: false
         type: string
         default: '.'
-      run_tests:
-        required: false
-        type: boolean
-        default: true
-      enable_versioning:
-        required: false
-        type: boolean
-        default: true
-      reviewers:
-        description: "Comma-separated logins to request a review of Dependabot's and release-please's pull requests from; empty means the repository's owner"
-        required: false
-        type: string
-        default: ''
     outputs:
-      new_release_published:
-        description: "Whether a new release was published"
-        value: ${{ jobs.version.outputs.new_release_published }}
-      version:
-        description: "Released version (e.g. 1.2.3); empty when nothing was released"
-        value: ${{ jobs.version.outputs.version }}
-      tag_name:
-        description: "Released tag (e.g. v1.2.3); empty when nothing was released"
-        value: ${{ jobs.version.outputs.tag_name }}
+      package_artifact:
+        description: "The artifact holding the .deb, for publish.yml's assets"
+        value: debian-package
 
 jobs:
-  # Dependabot's pull requests ask for a review as they open, before the checks, so a failing
-  # update reaches the reviewer too
-  review:
-    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
-    uses: ./.github/workflows/review.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      reviewers: ${{ inputs.reviewers }}
-    permissions:
-      pull-requests: write
-
-  auto-merge:
-    uses: ./.github/workflows/merge.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-    needs: [testing]
-    permissions:
-      contents: write
-      pull-requests: write
-
-  testing:
-    # With test_on_push false, a push checks only when a release is made, in release-testing.
-    if: >-
-      (github.event_name != 'push' || inputs.test_on_push) &&
-      (inputs.test_release_prs || !startsWith(github.head_ref, 'release-please--'))
-    uses: ./.github/workflows/testing.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      working_directory: ${{ inputs.working_directory }}
-      python_version: ${{ inputs.python_version }}
-      enable_secrets: ${{ inputs.enable_secrets }}
-      auto_patch: ${{ inputs.auto_patch }}
-      run_tests: ${{ inputs.run_tests }}
-
-  version:
-    # Runs when the checks were skipped, as on a push to main with test_on_push false, but not when they failed.
-    if: ${{ !failure() && !cancelled() && inputs.enable_versioning }}
-    uses: ./.github/workflows/version.yml
-    needs: [testing]
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      working_directory: ${{ inputs.working_directory }}
-      reviewers: ${{ inputs.reviewers }}
-
-  release-testing:
-    # With test_on_push false, a push to main is checked and built only when release-please made a release.
-    needs: [version]
-    if: >-
-      !cancelled() && github.event_name == 'push' && !inputs.test_on_push &&
-      (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true)
-    uses: ./.github/workflows/testing.yml
-    with:
-      runs_on: ${{ inputs.runs_on }}
-      working_directory: ${{ inputs.working_directory }}
-      python_version: ${{ inputs.python_version }}
-      enable_secrets: ${{ inputs.enable_secrets }}
-      auto_patch: ${{ inputs.auto_patch }}
-      run_tests: ${{ inputs.run_tests }}
-
-  build-deb:
+  build:
+    name: build
     # A container job, which self-hosted runners without a Docker daemon can't run.
     runs-on: ubuntu-latest
     # Build inside an actual Debian container so the venv is built against the same
@@ -130,24 +32,24 @@ jobs:
     # Its python3 (3.13 on trixie) must meet requires-python: forgepy refuses --debian above it.
     container: debian:trixie-slim
     timeout-minutes: 10
-    needs: [testing, version, release-testing]
-    if: ${{ !failure() && !cancelled() && (needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) }}
     permissions:
       contents: read
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Install build tooling
+      - name: Install the build tools
         run: |
           apt-get update
           apt-get install -y --no-install-recommends curl ca-certificates python3 python3-venv
       # as every other job installs it; the action checks the download's checksum
-      - uses: astral-sh/setup-uv@v7
-      - name: Build a venv against the system Python
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+      - name: Install dependencies
         # overrides .python-version, whose patch pin the system Python may not match
         env:
           UV_PYTHON: /usr/bin/python3
@@ -164,10 +66,36 @@ jobs:
           echo "${NFPM_SHA256}  $RUNNER_TEMP/nfpm.deb" | sha256sum -c -
           apt-get install -y "$RUNNER_TEMP/nfpm.deb"
           rm "$RUNNER_TEMP/nfpm.deb"
-      - name: Build .deb package
+      - name: Build
         run: python3 packaging/build_deb.py
-      - name: Upload .deb Artifact
+      - name: Upload the package
         uses: actions/upload-artifact@v7
         with:
           name: debian-package
           path: ${{ inputs.working_directory }}/*.deb
+          if-no-files-found: error
+
+  # the archive reads back with its control fields and files, so a broken package fails before it ships
+  test:
+    name: test
+    needs: [build]
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Download the package
+        uses: actions/download-artifact@v8
+        with:
+          name: debian-package
+          path: ${{ runner.temp }}/deb
+      - name: Test
+        working-directory: ${{ runner.temp }}/deb
+        run: |
+          for deb in *.deb; do
+            dpkg-deb --info "$deb"
+            dpkg-deb --contents "$deb" > /dev/null
+            for field in Package Version Architecture; do
+              [ -n "$(dpkg-deb --field "$deb" "$field")" ] || { echo "::error::$deb has no $field"; exit 1; }
+            done
+          done

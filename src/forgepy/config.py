@@ -8,7 +8,7 @@ from pathlib import Path
 # The Python version a new project pins in .python-version, and the workflows' fallback when a
 # project has none. Raise it here; a test keeps the workflows' fallback in step.
 DEFAULT_PYTHON_VERSION = "3.13"
-# The image debian.yml's build-deb job builds in, and the python3 it ships: a --debian project must
+# The image debian.yml's build stage builds in, and the python3 it ships: a --debian project must
 # target that Python or older. A test keeps the image in step with the workflow.
 DEBIAN_IMAGE = "debian:trixie-slim"
 DEBIAN_PYTHON_VERSION = "3.13"
