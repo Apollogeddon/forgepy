@@ -65,7 +65,14 @@ In that mode release-please tags the release before the push's checks run. If th
 
 *Security and static analysis.*
 
-1. **`secure`**: Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner dependency scan. The OSV-Scanner results are reported in the log but don't fail the job; `testing.yml`'s `patch` job acts on them on `main`.
+1. **`secure`**: Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner dependency scan. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the job, so a change can't add one. Elsewhere, such as on `main` or a release, it's an error annotation that doesn't fail the job: an advisory published against a dependency you already have shouldn't stop releases, and `testing.yml`'s `patch` job, which only runs when the checks pass, can then upgrade it. Lower findings are warning annotations, and every finding is listed in the job summary. If the scanner can't run, for example because OSV's API is unreachable, the job warns and passes. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside the lockfile:
+
+    ```toml
+    [[IgnoredVulns]]
+    id = "GHSA-xxxx-xxxx-xxxx"
+    ignoreUntil = 2026-12-31
+    reason = "No fixed version yet; the vulnerable function isn't called"
+    ```
 2. **`linting`**: `uv sync --locked` (plus `sync_args`), then `ruff check`, `ruff format --check`, `basedpyright` and `forgepy sync --check` when the project has a `.forgepy/` directory. In a `--jython` project (one with `.forgepy/ruff-jython.toml`) it also runs `poe compat`, the vermin Jython 2.7 check. Runs `website.yml`'s [pre-build command](#generating-content-before-the-build) first, if set.
 
 ## testing.yml
@@ -89,7 +96,7 @@ Outputs `new_release_published`, `version` and `tag_name` for the delivery jobs:
 
 *Dependabot auto-merge.*
 
-1. **`auto-merge`**: for pull requests opened by Dependabot, enables GitHub's auto-merge so the PR merges once the required checks pass. If the PR can already be merged, it merges it straight away. It squash-merges, so release-please lists each update once: a merge commit repeats the pull request's title, and release-please reads that as a second change. The repository needs **Allow auto-merge** turned on. Merge your own pull requests the same way, with **Squash and merge**. Once the pull request has merged, it sends the `auto-merged` `repository_dispatch` event, so a workflow listening for it runs on `main`: a merge made with `GITHUB_TOKEN` starts no push run. When it enabled auto-merge rather than merging, it waits up to 12 minutes for the merge before sending it. See [Secrets](overview.md#secrets).
+1. **`auto-merge`**: for pull requests opened by Dependabot, when Dependabot also made the latest change (someone else's push to its branch waits for a person), enables GitHub's auto-merge so the PR merges once the required checks pass. If the PR can already be merged, it merges it straight away. It squash-merges, so release-please lists each update once: a merge commit repeats the pull request's title, and release-please reads that as a second change. The repository needs **Allow auto-merge** turned on. Merge your own pull requests the same way, with **Squash and merge**. Once the pull request has merged, it sends the `auto-merged` `repository_dispatch` event, so a workflow listening for it runs on `main`: a merge made with `GITHUB_TOKEN` starts no push run. When it enabled auto-merge rather than merging, it waits up to 12 minutes for the merge before sending it. See [Secrets](overview.md#secrets).
 
 Dependabot's GitHub Actions updates (branches starting `dependabot/github_actions/`) are skipped and left for a person to merge: they change workflow files, which a workflow's `GITHUB_TOKEN` can't merge.
 
@@ -135,7 +142,7 @@ Configure the trusted publisher on your PyPI project's settings page first.
 
 1. Calls `testing.yml`, `merge.yml`, `version.yml`, as `service.yml` does.
 2. **`release-testing`**: as in `library.yml`. *(Needs: version)*
-3. **`build-deb`**: on a new release on `main`, builds inside a `debian:bookworm-slim` container so the virtual environment targets the system `python3` the `.deb` depends on, packages it with nFPM, and uploads the `.deb` as a workflow artifact. *(Needs: testing, version, release-testing)*
+3. **`build-deb`**: on a new release on `main`, builds inside a `debian:bookworm-slim` container so the virtual environment targets the system `python3` the `.deb` depends on, packages it with nFPM (a pinned release, checked against its SHA-256; uv comes from `astral-sh/setup-uv` as in every other job), and uploads the `.deb` as a workflow artifact. *(Needs: testing, version, release-testing)*
 
 ## website.yml
 

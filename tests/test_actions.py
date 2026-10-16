@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -386,3 +387,146 @@ def test_auto_merge_dispatch_is_listened_for(workflow: str):
     on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
     assert sent
     assert on_block["repository_dispatch"]["types"] == [sent]
+
+
+def _debian_build_steps() -> list[YamlDoc]:
+    doc = cast(YamlDoc, yaml.safe_load((WORKFLOWS_DIR / "debian.yml").read_text(encoding="utf-8")))
+    return cast(list[YamlDoc], doc["jobs"]["build-deb"]["steps"])
+
+
+def test_debian_build_installs_its_tools_pinned_and_verified():
+    steps = _debian_build_steps()
+    runs = "\n".join(str(step.get("run", "")) for step in steps)
+    assert not re.search(r"\|\s*(ba)?sh\b", runs)
+    assert "releases/latest" not in runs
+    assert any(str(step.get("uses", "")).startswith("astral-sh/setup-uv@v") for step in steps)
+    nfpm = next(step for step in steps if step.get("name") == "Install nfpm")
+    assert re.fullmatch(r"\d+\.\d+\.\d+", nfpm["env"]["NFPM_VERSION"])
+    assert re.fullmatch(r"[0-9a-f]{64}", nfpm["env"]["NFPM_SHA256"])
+
+
+@pytest.mark.skipif(shutil.which("sha256sum") is None, reason="needs sha256sum")
+def test_debian_build_refuses_an_nfpm_download_that_fails_its_checksum(tmp_path: Path):
+    nfpm = next(step for step in _debian_build_steps() if step.get("name") == "Install nfpm")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    installed = tmp_path / "installed"
+    # curl writes a tampered package; apt-get records whether it was asked to install anything
+    (bin_dir / "curl").write_text('#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\necho tampered > "$2"\n')
+    (bin_dir / "apt-get").write_text(f'#!/bin/sh\ntouch "{installed}"\n')
+    for tool in ("curl", "apt-get"):
+        (bin_dir / tool).chmod(0o755)
+    env = {
+        **os.environ,
+        **nfpm["env"],
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "RUNNER_TEMP": str(tmp_path),
+    }
+    result = subprocess.run(["bash", "-e", "-c", nfpm["run"]], env=env, capture_output=True, check=False)
+    assert result.returncode != 0
+    assert not installed.exists()
+
+
+def _secure_steps() -> list[YamlDoc]:
+    doc = cast(YamlDoc, yaml.safe_load((WORKFLOWS_DIR / "quality.yml").read_text(encoding="utf-8")))
+    return cast(list[YamlDoc], doc["jobs"]["secure"]["steps"])
+
+
+# runs the report step's github-script body under Node with a stand-in for its core API
+_OSV_HARNESS = """
+const calls = { info: [], warning: [], error: [], setFailed: [] };
+const record = (kind) => (message) => calls[kind].push(message);
+const core = {
+  info: record('info'), warning: record('warning'), error: record('error'), setFailed: record('setFailed'),
+  summary: { addHeading() { return this; }, addTable() { return this; }, async write() {} },
+};
+const body = require('node:fs').readFileSync(process.argv[1], 'utf8');
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+new AsyncFunction('require', 'core', body)(require, core).then(() => console.log(JSON.stringify(calls)));
+"""
+
+
+def _run_osv_report(
+    tmp_path: Path, status: int, results: list[YamlDoc] | None, *, enforce: bool
+) -> dict[str, list[str]]:
+    report = next(step for step in _secure_steps() if step.get("name") == "Report OSV findings")
+    script = tmp_path / "report.js"
+    script.write_text(report["with"]["script"], encoding="utf-8")
+    osv_json = tmp_path / "osv.json"
+    if results is not None:
+        osv_json.write_text(json.dumps({"results": results}), encoding="utf-8")
+    env = {
+        **os.environ,
+        "OSV_STATUS": str(status),
+        "OSV_REPORT": str(osv_json),
+        "OSV_ENFORCE": "true" if enforce else "false",
+        "GITHUB_WORKSPACE": str(tmp_path),
+    }
+    node = cast(str, shutil.which("node"))
+    out = subprocess.run([node, "-e", _OSV_HARNESS, str(script)], env=env, capture_output=True, text=True, check=True)
+    return cast(dict[str, list[str]], json.loads(out.stdout))
+
+
+def _finding(advisory: str, max_severity: str, rating: str | None = None) -> YamlDoc:
+    return {
+        "package": {"name": f"pkg-{advisory}", "version": "1.0.0"},
+        "vulnerabilities": [
+            {"id": advisory, "summary": advisory, "database_specific": {"severity": rating} if rating else {}}
+        ],
+        "groups": [{"ids": [advisory], "max_severity": max_severity}],
+    }
+
+
+def test_osv_scan_never_swallows_the_result():
+    steps = _secure_steps()
+    scan = next(step for step in steps if step.get("name") == "OSV Scan")
+    report = next(step for step in steps if step.get("name") == "Report OSV findings")
+    assert "|| true" not in scan["run"]
+    assert report["env"]["OSV_ENFORCE"] == "${{ github.event_name == 'pull_request' }}"
+
+
+needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the github-script body")
+
+
+@needs_node
+@pytest.mark.parametrize(("enforce", "failed"), [(True, 1), (False, 0)])
+def test_osv_report_fails_only_a_pull_request_on_a_high_finding(tmp_path: Path, *, enforce: bool, failed: int):
+    lockfile = {"source": {"path": str(tmp_path / "uv.lock")}}
+    calls = _run_osv_report(
+        tmp_path,
+        1,
+        [{**lockfile, "packages": [_finding("GHSA-high", "9.8"), _finding("GHSA-low", "5.3")]}],
+        enforce=enforce,
+    )
+    assert len(calls["setFailed"]) == failed
+    assert any("GHSA-high" in message for message in calls["error"])
+    assert any("GHSA-low" in message for message in calls["warning"])
+
+
+@needs_node
+def test_osv_report_uses_the_advisory_rating_without_a_score(tmp_path: Path):
+    lockfile = {"source": {"path": str(tmp_path / "uv.lock")}}
+    calls = _run_osv_report(tmp_path, 1, [{**lockfile, "packages": [_finding("GHSA-c", "", "CRITICAL")]}], enforce=True)
+    assert len(calls["setFailed"]) == 1
+
+
+@needs_node
+@pytest.mark.parametrize(
+    ("status", "results", "warned"), [(0, [], False), (128, [], False), (127, [], True), (1, None, True)]
+)
+def test_osv_report_passes_when_there_is_nothing_to_report(
+    tmp_path: Path, status: int, results: list[YamlDoc] | None, *, warned: bool
+):
+    calls = _run_osv_report(tmp_path, status, results, enforce=True)
+    assert calls["setFailed"] == []
+    assert bool(calls["warning"]) is warned
+
+
+# the author alone would merge someone else's push to Dependabot's branch, and the actor alone
+# a pull request someone else opened that Dependabot then updated
+def test_auto_merge_needs_dependabot_to_open_the_pull_request_and_make_its_latest_change():
+    doc = cast(YamlDoc, yaml.safe_load((WORKFLOWS_DIR / "merge.yml").read_text(encoding="utf-8")))
+    gate = str(doc["jobs"]["auto-merge"]["if"])
+    assert "github.event.pull_request.user.login == 'dependabot[bot]' && " in gate
+    assert "github.actor == 'dependabot[bot]' && " in gate
+    assert "||" not in gate

@@ -17,7 +17,7 @@ The Ruff and basedpyright base configs live in `.forgepy/` inside your project. 
 | `.forgepy/pyrightconfig.json` | Base basedpyright settings. Don't edit it either. |
 | `.forgepy/ruff-jython.toml` | Base Ruff rules for [Jython projects](#jython-projects), only in projects that have it. |
 
-`init` always rewrites these files, with or without `--force`.
+`init` always brings these files up to date, with or without `--force`; a file that's already current isn't rewritten.
 
 ## Dependencies
 
@@ -198,10 +198,11 @@ So moving a project to another version is one edit to `.python-version`, with `r
 
 ## Repository files
 
-`init` also writes three files for the repository itself. Like the other configs, an existing one is kept unless you pass `--force`.
+`init` also writes four files for the repository itself. Like the other configs, an existing one is kept unless you pass `--force`, except `.gitignore`, which is yours once it exists and is never overwritten.
 
 | File | What it does |
 | :--- | :--- |
+| `.gitignore` | Ignores what uv, the generated tasks and the `.deb` build write: `.venv/`, `__pycache__/`, `dist/`, test and coverage reports, tool caches and `*.deb` |
 | `.editorconfig` | LF line endings, UTF-8 and 120 columns, with 4-space Python and 2-space everything else, matching the Ruff config |
 | `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The workflow's auto-merge job merges them once CI passes. |
 | `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |

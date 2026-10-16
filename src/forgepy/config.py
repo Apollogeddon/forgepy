@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -7,6 +8,16 @@ from pathlib import Path
 # The Python version a new project pins in .python-version, and the workflows' fallback when a
 # project has none. Raise it here; a test keeps the workflows' fallback in step.
 DEFAULT_PYTHON_VERSION = "3.13"
+# The oldest Python a project can target: the oldest the tools' configs and images support
+MIN_PYTHON_MINOR = 10
+
+_PYTHON_VERSION = re.compile(r"3\.(\d+)(?:\.\d+)?")
+
+
+def valid_python_version(version: str) -> bool:
+    """A CPython 3 release from 3.10 up, as 3.13 or 3.13.1."""
+    match = _PYTHON_VERSION.fullmatch(version)
+    return match is not None and int(match.group(1)) >= MIN_PYTHON_MINOR
 
 
 class Mode(StrEnum):
@@ -47,8 +58,18 @@ class InitConfig:
         """Whether uv builds and installs the project itself, which needs a module under src/."""
         return not (self.mode.is_website or self.jython)
 
+    @property
+    def python_minor(self) -> str:
+        """The major.minor of python_version, which ruff's target version names."""
+        return ".".join(self.python_version.split(".")[:2])
+
     def validate(self) -> list[str]:
         errors: list[str] = []
+        if not valid_python_version(self.python_version):
+            errors.append(
+                f"--python takes a Python version from 3.{MIN_PYTHON_MINOR} up, such as 3.13 or 3.13.1, "
+                f"not {self.python_version!r}"
+            )
         if self.docker and self.mode.is_library:
             errors.append("--docker is not available in library mode")
         if self.debian and not self.mode.is_backend:

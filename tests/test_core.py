@@ -152,6 +152,29 @@ def test_init_rejects_invalid_combinations_without_writing():
     assert not fs.exists(PROJECT / "pyproject.toml")
 
 
+@pytest.mark.parametrize("version", ["banana", "3", "3.9", "2.7", "3.13.x", ">=3.13", ""])
+def test_init_rejects_an_invalid_python_version_without_writing(version: str):
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, python_version=version), fs) == EXIT_INVALID_CONFIG
+    assert not fs.exists(PROJECT / "pyproject.toml")
+
+
+def test_init_takes_a_patch_python_version_and_targets_its_minor_in_ruff():
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, python_version="3.12.4"), fs) == 0
+    assert fs.read_text(PROJECT / ".python-version") == "3.12.4\n"
+    assert 'target-version = "py312"' in fs.read_text(PROJECT / "ruff.toml")
+
+
+def test_init_in_a_directory_with_spaces_makes_a_valid_package():
+    fs = MemoryFileSystem()
+    target = Path("My Project")
+    assert init(InitConfig(target=target), fs) == 0
+    doc = tomlkit.parse(fs.read_text(target / "pyproject.toml"))
+    assert doc["project"]["name"] == "my-project"
+    assert fs.exists(target / "src/my_project/__init__.py")
+
+
 def test_init_always_adds_toolchain_from_git_even_without_linting():
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT, linting=False), fs)
@@ -497,3 +520,32 @@ def test_init_codeowners_prefers_the_project_urls():
     )
     init(InitConfig(target=PROJECT), fs)
     assert "* @octo-org\n" in fs.read_text(PROJECT / ".github/CODEOWNERS")
+
+
+class _CountingFileSystem(MemoryFileSystem):
+    def __init__(self) -> None:
+        super().__init__()
+        self.writes: list[Path] = []
+
+    def write_text(self, path: Path, content: str) -> None:
+        self.writes.append(path)
+        super().write_text(path, content)
+
+
+def test_init_leaves_unchanged_managed_files_alone():
+    fs = _CountingFileSystem()
+    assert init(InitConfig(target=PROJECT), fs) == 0
+    fs.writes.clear()
+    assert init(InitConfig(target=PROJECT), fs) == 0
+    assert not [path for path in fs.writes if ".forgepy" in path.parts]
+
+
+def test_init_writes_a_gitignore_once_and_keeps_the_projects_own():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    ignore = fs.read_text(PROJECT / ".gitignore")
+    for entry in (".venv/", "dist/", "junit-report.xml", "coverage.json"):
+        assert entry in ignore
+    fs.write_text(PROJECT / ".gitignore", "custom\n")
+    init(InitConfig(target=PROJECT, force=True), fs)
+    assert fs.read_text(PROJECT / ".gitignore") == "custom\n"

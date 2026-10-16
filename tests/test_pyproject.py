@@ -24,6 +24,16 @@ def test_load_or_create_normalizes_project_name():
     assert doc["project"]["name"] == "my-cool-project"
 
 
+@pytest.mark.parametrize(
+    ("directory", "name"),
+    [("My Project", "my-project"), ("Ünï cöde!", "uni-code"), ("2024 report", "app-2024-report"), ("!!!", "project")],
+)
+def test_load_or_create_makes_a_valid_name_from_any_directory(directory: str, name: str):
+    doc = pj.load_or_create(MemoryFileSystem(), Path(directory), "3.13")
+    assert doc["project"]["name"] == name
+    assert pj.package_module_name(doc, Path(directory)).isidentifier()
+
+
 def test_load_or_create_parses_existing_file_preserving_comments():
     fs = MemoryFileSystem()
     content = '# a comment\n[project]\nname = "existing"\n'
