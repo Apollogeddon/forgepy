@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.0](https://github.com/Apollogeddon/forgepy/compare/v0.9.0...v1.0.0) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* the old pipelines are gone; call the split pipelines from a root .index.yml.
+
+### Features
+
+* **ci:** run main's pipeline after a dependabot auto-merge, through a repository_dispatch ([#60](https://github.com/Apollogeddon/forgepy/issues/60)) ([18bfc77](https://github.com/Apollogeddon/forgepy/commit/18bfc770920965ca73ed0262f270a1cf4972bfaf))
+* split the pipelines by role, with a root .index.yml and two-level job names ([#64](https://github.com/Apollogeddon/forgepy/issues/64)) ([6aeae80](https://github.com/Apollogeddon/forgepy/commit/6aeae807d442d53e428e250ff2daaddd01efde57))
+
+
+### Bug Fixes
+
+* build debian packages on trixie's python 3.13 and keep a project's own python pin ([#63](https://github.com/Apollogeddon/forgepy/issues/63)) ([6c3a58e](https://github.com/Apollogeddon/forgepy/commit/6c3a58edb788e154bd428a809ffbc9e87ab20e67))
+* review 4 findings (python version check, project names, pinned uv and nfpm, OSV gate) ([#61](https://github.com/Apollogeddon/forgepy/issues/61)) ([3f804b2](https://github.com/Apollogeddon/forgepy/commit/3f804b2284ddce1cffd4c2757d600aea7da15ca6))
+
 ## [0.9.0](https://github.com/Apollogeddon/forgepy/compare/v0.8.0...v0.9.0) (2026-10-11)
 
 
