@@ -124,10 +124,11 @@ jobs:
     # A container job, which self-hosted runners without a Docker daemon can't run.
     runs-on: ubuntu-latest
     # Build inside an actual Debian container so the venv is built against the same
-    # apt-provided /usr/bin/python3 that `depends: python3 (>= X.Y)` guarantees on
+    # apt-provided /usr/bin/python3 that the package's python3 dependency guarantees on
     # the real install target - a GitHub-hosted Python (setup-python, or uv's own
     # managed download) lives at a path no .deb dependency can promise exists there.
-    container: debian:bookworm-slim
+    # Its python3 (3.13 on trixie) must meet requires-python: forgepy refuses --debian above it.
+    container: debian:trixie-slim
     timeout-minutes: 10
     needs: [testing, version, release-testing]
     if: ${{ !failure() && !cancelled() && (needs.testing.result == 'success' || needs['release-testing'].result == 'success') && github.ref == 'refs/heads/main' && (needs.version.outputs.new_release_published == 'true' || needs.version.outputs.new_release_published == true) }}
@@ -147,6 +148,9 @@ jobs:
       # as every other job installs it; the action checks the download's checksum
       - uses: astral-sh/setup-uv@v7
       - name: Build a venv against the system Python
+        # overrides .python-version, whose patch pin the system Python may not match
+        env:
+          UV_PYTHON: /usr/bin/python3
         run: |
           uv venv --relocatable --no-managed-python .venv
           uv sync --locked --no-dev --no-editable

@@ -5,14 +5,17 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 import yaml
 
-from forgepy.config import DEFAULT_PYTHON_VERSION
+from forgepy.config import DEBIAN_IMAGE, DEBIAN_PYTHON_VERSION, DEFAULT_PYTHON_VERSION, InitConfig
+from forgepy.core import init
 from forgepy.templates import workflows as workflow_templates
+from forgepy.utils.filesystem import MemoryFileSystem
 
 WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
 # PyYAML can produce non-str keys (YAML 1.1 parses a bare `on:` mapping key as
@@ -213,6 +216,28 @@ def test_python_version_input_defaults_to_empty(path: Path):
     inputs: YamlDoc = workflow_call.get("inputs") or {}
     if "python_version" in inputs:
         assert inputs["python_version"]["default"] == ""
+
+
+def test_debian_build_runs_in_the_image_init_checks_python_against():
+    build: YamlDoc = yaml.safe_load((WORKFLOWS_DIR / "debian.yml").read_text(encoding="utf-8"))["jobs"]["build-deb"]
+    assert build["container"] == DEBIAN_IMAGE
+
+
+def _minor(version: str) -> tuple[int, int]:
+    major, minor = version.split(".")[:2]
+    return int(major), int(minor)
+
+
+def test_debian_build_images_python_meets_a_default_debian_projects_requires_python():
+    """The deb is built against the image's python3, so it must satisfy what init writes for a --debian project."""
+    fs = MemoryFileSystem()
+    project = Path("project")
+    assert init(InitConfig(target=project, debian=True), fs) == 0
+    requires = tomllib.loads(fs.read_text(project / "pyproject.toml"))["project"]["requires-python"]
+    floor = re.fullmatch(r">=(\d+\.\d+)(?:\.\d+)?", requires)
+    assert floor is not None
+    assert _minor(floor.group(1)) <= _minor(DEBIAN_PYTHON_VERSION)
+    assert _minor(fs.read_text(project / ".python-version").strip()) <= _minor(DEBIAN_PYTHON_VERSION)
 
 
 def test_generated_workflow_leaves_the_version_to_python_version_file():

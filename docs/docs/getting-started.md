@@ -10,7 +10,7 @@ This page shows you how to install Forge.py, scaffold a project with `forgepy in
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/). Forge.py generates uv-managed projects, and every task runs through `uv run`.
-- Python 3.13, or the version you pass to `--python`. uv can install it for you.
+- Python 3.13, the version you pass to `--python`, or the one your project already pins. uv can install it for you.
 - Git, for the pre-commit hooks.
 
 Some optional tasks call tools that uv doesn't install. Put them on your `PATH` if you use those tasks:
@@ -118,14 +118,14 @@ forgepy --version
 | `--jython` | Scripts that run on Jython 2.7: no packaging, lint rules that keep Python 2 syntax, and a vermin compatibility check. `--backend` only; needs linting, and can't be combined with `--docker` or `--debian`. See [Jython projects](configuration.md#jython-projects). |
 | `--force` | Overwrite existing config files and tasks, and remove the files of features you turned off. |
 | `--dry-run` | Show what would change without writing anything. |
-| `--python VERSION` | Target Python version, from 3.10 up, as `3.13` or `3.13.1` (default: `3.13`). |
+| `--python VERSION` | Target Python version, from 3.10 up, as `3.13` or `3.13.1` (default: the project's `.python-version`, else the lower bound of its `requires-python`, else `3.13`). With `--debian`, 3.13 or older. |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
 `--website` scaffolds a static documentation site built with Zensical: `mkdocs.yml`, which Zensical reads as its configuration, and `docs/index.md`. There is no Python package. `uv run poe dev` serves the site locally with live reload, and `uv run poe build` writes it to `dist/`. In CI, the `website.yml` workflow builds the site and deploys `dist/` to GitHub Pages. It can also check the built site's links and accessibility, and run a command that generates content before the build; see [`website.yml`](workflows/reference.md#websiteyml).
 
 `--no-testing` and `--no-versioning` also turn off the matching jobs in the generated CI workflow.
 
-Options that can't be combined, or a `--python` that isn't a Python version, exit with status `2` without writing anything.
+Options that can't be combined, or a `--python` (or a project's own pin) that isn't a Python version forgepy can target, exit with status `2` without writing anything.
 
 A new `pyproject.toml` is named after the directory, lowercased with anything other than letters and digits turned into dashes: a directory called `My Project` gives `my-project`, with its module in `src/my_project/`. A name that would start with a digit gets an `app-` prefix, so its module can be imported.
 

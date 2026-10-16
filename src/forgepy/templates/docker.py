@@ -32,7 +32,7 @@ CMD ["python", "-m", "__FORGEPY_PACKAGE_NAME__"]
 # stage is per-platform. `--no-sync` stops uv re-adding forgepy, which the build doesn't need.
 DOCKERFILE_WEBSITE = """\
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:python__FORGEPY_PYTHON_VERSION__-bookworm-slim AS build
+FROM --platform=$BUILDPLATFORM ghcr.io/astral-sh/uv:python__FORGEPY_PYTHON_MINOR__-bookworm-slim AS build
 ENV UV_LINK_MODE=copy
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
@@ -59,6 +59,10 @@ htmlcov
 
 
 def render(template: str, *, python_version: str, package_name: str = "") -> str:
-    return template.replace("__FORGEPY_PYTHON_VERSION__", python_version).replace(
-        "__FORGEPY_PACKAGE_NAME__", package_name
+    # uv's images are tagged by minor version only, as python3.13
+    python_minor = ".".join(python_version.split(".")[:2])
+    return (
+        template.replace("__FORGEPY_PYTHON_VERSION__", python_version)
+        .replace("__FORGEPY_PYTHON_MINOR__", python_minor)
+        .replace("__FORGEPY_PACKAGE_NAME__", package_name)
     )

@@ -82,5 +82,5 @@ class BaseFeature(Feature):
                     package_templates.render(package_templates.MAIN_PY, project_name=project_name),
                 )
 
-        ok &= create_file(ctx, ".python-version", f"{ctx.cfg.python_version}\n")
+        ok &= create_file(ctx, ".python-version", f"{ctx.cfg.python}\n")
         return ok

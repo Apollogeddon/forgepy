@@ -167,7 +167,9 @@ CI builds the image for every configured platform. See [docker.yml](workflows/re
 
 ### nFPM: Debian packaging
 
-`--debian` adds `nfpm.yaml`, a systemd unit (`packaging/<name>.service`), `packaging/postinstall.sh` and `packaging/build_deb.py`. `uv run poe build-deb` builds a relocatable virtual environment against the system Python and packages it as a `.deb` that installs to `/opt/<name>` and depends on `python3`. It needs the `nfpm` CLI on your `PATH`.
+`--debian` adds `nfpm.yaml`, a systemd unit (`packaging/<name>.service`), `packaging/postinstall.sh` and `packaging/build_deb.py`. `uv run poe build-deb` builds a relocatable virtual environment against the system Python and packages it as a `.deb` that installs to `/opt/<name>` and depends on `python3` at the minor version the environment was built with (`python3 (>= 3.13), python3 (<< 3.14)` for 3.13), as its packages only run on that version. It needs the `nfpm` CLI on your `PATH`.
+
+CI's `build-deb` job builds on Debian 13 (trixie), whose `python3` is 3.13, so the package installs on trixie. A Debian project must target Python 3.13 or older: `init --debian` refuses a newer `--python`.
 
 ## Jython projects
 
@@ -186,7 +188,7 @@ If the scripts are type-checked against several versions of a platform's stubs, 
 
 ## Python version
 
-A project's Python version lives in `.python-version`, which `init` writes with `3.13`, or the version passed to `--python`, and which uv and `actions/setup-python` both read. `requires-python` in `pyproject.toml` starts from the same version.
+A project's Python version lives in `.python-version`, which uv and `actions/setup-python` both read. `init` targets the version passed to `--python`; without one, it keeps the project's own: its `.python-version`, else the lower bound of `requires-python` in `pyproject.toml`, else `3.13`. That version goes into a new `.python-version` and `requires-python`, Ruff's target version and the Dockerfile.
 
 Every workflow job that sets up Python picks the version in this order:
 

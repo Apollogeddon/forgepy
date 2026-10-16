@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -549,3 +552,80 @@ def test_init_writes_a_gitignore_once_and_keeps_the_projects_own():
     fs.write_text(PROJECT / ".gitignore", "custom\n")
     init(InitConfig(target=PROJECT, force=True), fs)
     assert fs.read_text(PROJECT / ".gitignore") == "custom\n"
+
+
+def _ruff_target(fs: MemoryFileSystem) -> str:
+    return tomlkit.parse(fs.read_text(PROJECT / "ruff.toml"))["target-version"]
+
+
+def test_init_keeps_the_projects_python_version_file():
+    fs = MemoryFileSystem()
+    fs.write_text(PROJECT / ".python-version", "# pinned\n3.11\n")
+    fs.write_text(PROJECT / "pyproject.toml", '[project]\nname = "app"\nrequires-python = ">=3.11"\n')
+    assert init(InitConfig(target=PROJECT, docker=True), fs) == 0
+    assert _ruff_target(fs) == "py311"
+    assert "FROM python:3.11-slim" in fs.read_text(PROJECT / "Dockerfile")
+    assert tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))["project"]["requires-python"] == ">=3.11"
+
+
+@pytest.mark.parametrize("requires", [">=3.11", ">=3.11,<4", "<4, >= 3.11", "~=3.11", "==3.11.*"])
+def test_init_without_a_python_version_file_targets_requires_pythons_floor(requires: str):
+    fs = MemoryFileSystem()
+    fs.write_text(PROJECT / "pyproject.toml", f'[project]\nname = "app"\nrequires-python = "{requires}"\n')
+    assert init(InitConfig(target=PROJECT), fs) == 0
+    assert _ruff_target(fs) == "py311"
+    assert fs.read_text(PROJECT / ".python-version") == "3.11\n"
+
+
+def test_init_python_flag_overrides_the_projects_pin():
+    fs = MemoryFileSystem()
+    fs.write_text(PROJECT / ".python-version", "3.11\n")
+    assert init(InitConfig(target=PROJECT, python_version="3.12"), fs) == 0
+    assert _ruff_target(fs) == "py312"
+
+
+@pytest.mark.parametrize("pin", ["3.9", "pypy@3.10"])
+def test_init_rejects_a_project_pin_it_cant_target_without_writing(pin: str):
+    fs = MemoryFileSystem()
+    fs.write_text(PROJECT / ".python-version", f"{pin}\n")
+    assert init(InitConfig(target=PROJECT), fs) == EXIT_INVALID_CONFIG
+    assert not fs.exists(PROJECT / "pyproject.toml")
+
+
+def test_init_website_docker_tags_uvs_image_by_minor_version():
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, mode=Mode.WEBSITE, docker=True, python_version="3.13.1"), fs) == 0
+    assert "ghcr.io/astral-sh/uv:python3.13-bookworm-slim" in fs.read_text(PROJECT / "Dockerfile")
+
+
+def test_init_debian_rejects_a_python_newer_than_its_build_image():
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, debian=True, python_version="3.14"), fs) == EXIT_INVALID_CONFIG
+    assert not fs.exists(PROJECT / "pyproject.toml")
+    fs.write_text(PROJECT / ".python-version", "3.14\n")
+    assert init(InitConfig(target=PROJECT, debian=True), fs) == EXIT_INVALID_CONFIG
+
+
+def test_init_debian_depends_on_the_python_the_venv_was_built_with(tmp_path: Path):
+    """build_deb.py stamps nfpm.yaml's python3 range from .venv, whose packages only run on its minor."""
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, debian=True), fs) == 0
+    depends = yaml.safe_load(fs.read_text(PROJECT / "nfpm.yaml"))["depends"]
+    assert depends == ["python3 (>= ${PYTHON_MINOR})", "python3 (<< ${PYTHON_NEXT_MINOR})"]
+
+    (tmp_path / "packaging").mkdir()
+    (tmp_path / "packaging/build_deb.py").write_text(fs.read_text(PROJECT / "packaging/build_deb.py"))
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "1.2.3"\n')
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv/pyvenv.cfg").write_text("home = /usr/bin\nversion_info = 3.13.5\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    nfpm = bin_dir / "nfpm"
+    nfpm.write_text('#!/bin/sh\necho "$VERSION $PYTHON_MINOR $PYTHON_NEXT_MINOR" > stamped\n')
+    nfpm.chmod(0o755)
+    env = os.environ | {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    result = subprocess.run(
+        [sys.executable, "packaging/build_deb.py"], cwd=tmp_path, env=env, check=False, capture_output=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "stamped").read_text().split() == ["1.2.3", "3.13", "3.14"]

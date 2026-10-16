@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from forgepy.config import DEFAULT_PYTHON_VERSION
-
 # Plain (non f-string) templates — see workflows.py for why.
 # Built with --relocatable --no-managed-python so the venv depends on system
 # python3, not uv's own download path, which a .deb install can't guarantee exists.
+# The venv only runs on the minor version it was built with, so build_deb.py stamps the
+# python3 dependency from it rather than from requires-python.
 
 NFPM_YAML = """\
 # Requires the nfpm CLI on PATH (https://nfpm.goreleaser.com) - it's a standalone
 # Go binary, not a Python package, so it isn't pulled in via pip/uv.
-# Build with: python packaging/build_deb.py (sets $VERSION from pyproject.toml).
+# Build with: python packaging/build_deb.py (sets $VERSION from pyproject.toml, and
+# $PYTHON_MINOR and $PYTHON_NEXT_MINOR from the Python .venv was built with).
 name: "__FORGEPY_DEB_NAME__"
 arch: "amd64"
 platform: "linux"
@@ -28,7 +29,8 @@ contents:
     dst: /etc/systemd/system/__FORGEPY_DEB_NAME__.service
 
 depends:
-  - python3 (>= __FORGEPY_PYTHON_VERSION__)
+  - python3 (>= ${PYTHON_MINOR})
+  - python3 (<< ${PYTHON_NEXT_MINOR})
 
 scripts:
   postinstall: packaging/postinstall.sh
@@ -58,7 +60,7 @@ systemctl enable __FORGEPY_DEB_NAME__.service
 """
 
 BUILD_DEB_PY = '''\
-"""Stamps nfpm.yaml's ${VERSION} from pyproject.toml, since nfpm doesn't read it itself."""
+"""Stamps nfpm.yaml's ${VERSION} from pyproject.toml, and its python3 range from .venv's Python."""
 
 import os
 import shutil
@@ -75,7 +77,23 @@ if nfpm is None:
 with Path("pyproject.toml").open("rb") as f:
     version = tomllib.load(f)["project"]["version"]
 
-env = os.environ | {"VERSION": version}
+# the venv's site-packages only work on the minor version it was built with
+venv_cfg = Path(".venv/pyvenv.cfg")
+if not venv_cfg.is_file():
+    print(".venv not found - build it first, as the build-deb task does", file=sys.stderr)
+    sys.exit(1)
+settings: dict[str, str] = {}
+for line in venv_cfg.read_text().splitlines():
+    key, sep, value = line.partition("=")
+    if sep:
+        settings[key.strip()] = value.strip()
+major, minor = (settings.get("version_info") or settings["version"]).split(".")[:2]
+
+env = os.environ | {
+    "VERSION": version,
+    "PYTHON_MINOR": f"{major}.{minor}",
+    "PYTHON_NEXT_MINOR": f"{major}.{int(minor) + 1}",
+}
 result = subprocess.run([nfpm, "pkg", "--packager", "deb", "-f", "nfpm.yaml"], env=env, check=False)  # noqa: S603
 sys.exit(result.returncode)
 '''
@@ -86,12 +104,10 @@ def render(
     *,
     deb_name: str,
     module_name: str,
-    python_version: str = DEFAULT_PYTHON_VERSION,
     maintainer: str = "unspecified",
 ) -> str:
     return (
         template.replace("__FORGEPY_DEB_NAME__", deb_name)
         .replace("__FORGEPY_MODULE_NAME__", module_name)
-        .replace("__FORGEPY_PYTHON_VERSION__", python_version)
         .replace("__FORGEPY_MAINTAINER__", maintainer)
     )

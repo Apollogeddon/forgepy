@@ -3,6 +3,7 @@ dependency at this repo since forgepy isn't on PyPI yet."""
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,8 @@ from pathlib import Path
 
 import pytest
 import tomlkit
+
+from forgepy.config import DEBIAN_IMAGE, DEBIAN_PYTHON_VERSION
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -39,10 +42,13 @@ def _use_local_forgepy_source(pyproject_path: Path) -> None:
     pyproject_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
 
 
-def _run(args: list[str], cwd: Path, timeout: int = 180) -> subprocess.CompletedProcess[str]:
+def _run(
+    args: list[str], cwd: Path, timeout: int = 180, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         args,
         cwd=cwd,
+        env=env,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -131,6 +137,33 @@ def test_backend_debian_scaffold_syncs_and_validates(tmp_path: Path):
     project = _scaffold(tmp_path, "--backend", "--debian")
     _run(["uv", "run", "poe", "lint"], cwd=project)
     _run(["uv", "run", "poe", "type"], cwd=project)
+
+
+DEBIAN_PYTHON = shutil.which(f"python{DEBIAN_PYTHON_VERSION}")
+
+
+@pytest.mark.skipif(DEBIAN_PYTHON is None, reason=f"no system Python {DEBIAN_PYTHON_VERSION}, {DEBIAN_IMAGE}'s")
+def test_backend_debian_builds_its_venv_on_the_build_images_python(tmp_path: Path):
+    """Runs debian.yml's build-deb steps against the Python its image ships, with a stand-in for nfpm."""
+    assert DEBIAN_PYTHON is not None
+    project = _scaffold(tmp_path, "--backend", "--debian")
+    shutil.rmtree(project / ".venv")
+    env = os.environ | {"UV_PYTHON": DEBIAN_PYTHON, "UV_PYTHON_DOWNLOADS": "never"}
+    _run(["uv", "venv", "--relocatable", "--no-managed-python", ".venv"], cwd=project, env=env)
+    _run(["uv", "sync", "--locked", "--no-dev", "--no-editable"], cwd=project, env=env)
+
+    bin_dir = tmp_path / "fake-bin"
+    bin_dir.mkdir()
+    nfpm = bin_dir / "nfpm"
+    nfpm.write_text('#!/bin/sh\necho "$PYTHON_MINOR $PYTHON_NEXT_MINOR" > depends.txt\n', encoding="utf-8")
+    nfpm.chmod(0o755)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    _run([DEBIAN_PYTHON, "packaging/build_deb.py"], cwd=project, env=env)
+    major, minor = DEBIAN_PYTHON_VERSION.split(".")
+    assert (project / "depends.txt").read_text(encoding="utf-8").split() == [
+        DEBIAN_PYTHON_VERSION,
+        f"{major}.{int(minor) + 1}",
+    ]
 
 
 HAS_DOCKER = (
