@@ -77,7 +77,7 @@ class LintingFeature(Feature):
 
     def apply(self, ctx: FeatureContext) -> bool:
         ok = True
-        python_target = f"py{ctx.cfg.python_version.replace('.', '')}"
+        python_target = f"py{ctx.cfg.python_minor.replace('.', '')}"
         tests_target = ""
         ok &= write_managed(ctx, ".forgepy/ruff.toml", templates.load_config("ruff.toml"))
         if ctx.cfg.jython:

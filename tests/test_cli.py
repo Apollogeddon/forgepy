@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from forgepy.core import EXIT_INVALID_CONFIG
+
 
 def run_cli(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -152,3 +154,10 @@ def test_check_jython_fails_on_a_comma_after_kwargs(tmp_path: Path):
     result = run_cli("check-jython", "script.py", cwd=tmp_path)
     assert result.returncode == 1
     assert "script.py:4" in result.stdout + result.stderr
+
+
+def test_init_with_an_invalid_python_version_exits_2(tmp_path: Path):
+    result = run_cli("init", "--python", "banana", cwd=tmp_path)
+    assert result.returncode == EXIT_INVALID_CONFIG
+    assert "--python takes a Python version" in result.stderr
+    assert not (tmp_path / "pyproject.toml").exists()

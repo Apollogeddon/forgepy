@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Any, cast
@@ -25,8 +26,16 @@ class PyprojectError(Exception):
 
 
 def normalize_project_name(name: str) -> str:
-    normalized = re.sub(r"[-_.]+", "-", name).lower()
+    """A valid, PEP 503-normalised project name, as forgego names one: "My Project" gives my-project."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    normalized = re.sub(r"[^a-z0-9]+", "-", ascii_name.lower())
     return normalized.strip("-") or "project"
+
+
+def _name_from_directory(directory: str) -> str:
+    name = normalize_project_name(directory)
+    # its module, the name with dashes as underscores, must be a Python identifier
+    return f"app-{name}" if name[0].isdigit() else name
 
 
 def project_name(doc: TOMLDocument, cwd: Path) -> str:
@@ -52,7 +61,7 @@ def _default_document(project_dir_name: str, python_version: str) -> TOMLDocumen
     doc = tomlkit.document()
 
     project = table()
-    project.add("name", normalize_project_name(project_dir_name))
+    project.add("name", _name_from_directory(project_dir_name))
     project.add("version", "0.1.0")
     project.add("requires-python", f">={python_version}")
     project.add("dependencies", tomlkit.array())

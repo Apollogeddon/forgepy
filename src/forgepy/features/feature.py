@@ -61,6 +61,9 @@ def write_managed(ctx: FeatureContext, rel_path: str, content: str) -> bool:
     """Forgepy-owned files under .forgepy/ always refresh, ignoring --force."""
     path = ctx.cwd / rel_path
     try:
+        if ctx.fs.exists(path) and ctx.fs.read_text(path) == content:
+            console.info(f"{rel_path} is up to date")
+            return True
         if ctx.cfg.dry_run:
             console.dry(f"Would refresh managed file {rel_path}")
             return True
