@@ -121,9 +121,9 @@ forgepy --version
 | `--python VERSION` | Target Python version, from 3.10 up, as `3.13` or `3.13.1` (default: the project's `.python-version`, else the lower bound of its `requires-python`, else `3.13`). With `--debian`, 3.13 or older. |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
-`--website` scaffolds a static documentation site built with Zensical: `mkdocs.yml`, which Zensical reads as its configuration, and `docs/index.md`. There is no Python package. `uv run poe dev` serves the site locally with live reload, and `uv run poe build` writes it to `dist/`. In CI, the `website.yml` workflow builds the site and deploys `dist/` to GitHub Pages. It can also check the built site's links and accessibility, and run a command that generates content before the build; see [`website.yml`](workflows/reference.md#websiteyml).
+`--website` scaffolds a static documentation site built with Zensical: `mkdocs.yml`, which Zensical reads as its configuration, and `docs/index.md`. There is no Python package. `uv run poe dev` serves the site locally with live reload, and `uv run poe build` writes it to `dist/`. In CI, the `website` pipeline builds the site and `pages` deploys `dist/` to GitHub Pages. The `website` pipeline can also check the built site's links and accessibility, and run a command that generates content before the build; see [Site checks](workflows/reference.md#site-checks).
 
-`--no-testing` and `--no-versioning` also turn off the matching jobs in the generated CI workflow.
+`--no-testing`, `--no-versioning` and `--jython` also turn off the matching jobs and stages in the generated `.github/workflows/.index.yml`; see [Generated workflow](workflows/overview.md#generated-workflow). Re-running `init` in a project an earlier release set up removes the `index.yml` it generated; see [Upgrading from `index.yml`](workflows/overview.md#upgrading-from-indexyml).
 
 Options that can't be combined, or a `--python` (or a project's own pin) that isn't a Python version forgepy can target, exit with status `2` without writing anything.
 
@@ -151,7 +151,7 @@ A default `forgepy init` (backend) produces:
 │   ├── CODEOWNERS              # requests your review on others' pull requests
 │   ├── dependabot.yml          # weekly updates with a 3-day cooldown
 │   ├── release.json            # release-please config
-│   └── workflows/index.yml     # CI/CD calling the reusable workflows
+│   └── workflows/.index.yml    # CI/CD calling the reusable pipelines
 ├── src/<package>/
 │   ├── __init__.py
 │   └── __main__.py

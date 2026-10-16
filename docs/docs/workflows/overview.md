@@ -1,157 +1,162 @@
 ---
 title: Workflows overview
-description: Reusable GitHub Actions workflows for Python CI/CD pipelines.
+description: Reusable GitHub Actions pipelines for Python projects, called from one root workflow.
 ---
 
 # Workflows overview
 
-Forge.py ships reusable GitHub Actions workflows that give every project the same quality gates, release process and delivery pipeline. `forgepy init` generates a `.github/workflows/index.yml` that calls the right one for your mode. This page covers how to call them, their common inputs and the permissions they need; the [job reference](reference.md) describes each job.
+Forge.py ships reusable GitHub Actions pipelines that give every project the same checks, release process and delivery. `forgepy init` generates a root workflow, `.github/workflows/.index.yml`, whose jobs each call one pipeline. This page covers the generated workflow, when each pipeline runs, and the permissions they need; the [pipeline reference](reference.md) describes each pipeline's stages and inputs.
 
-## Available workflows
+## Names on the run page
 
-| Workflow | Purpose |
+A root job calls a pipeline, and a pipeline's jobs are its stages, so a run page lists every job as `<pipeline> / <stage>`: `library / lint`, `version / release`, `pages / deploy`. No pipeline calls another, so there's never a third level. A pipeline an event doesn't need, such as `publish` on a pull request, shows as one skipped row.
+
+A root job's id is the pipeline's name. A second call to the same pipeline, or each leg of a matrix, names its variant in brackets, such as forgepy's own `patch (docs)` or `library (8.1)`; see [Checking against several dependency groups](../examples.md#checking-against-several-dependency-groups).
+
+## Pipelines
+
+| Pipeline | Stages | Purpose |
+| :--- | :--- | :--- |
+| `library.yml` | lint, scan, test, build | A library's checks, and the build `publish.yml` ships |
+| `service.yml` | lint, scan, test, build | A backend's checks and build |
+| `website.yml` | lint, scan, test, build, check | A website's checks, the Zensical build, and optional link and accessibility checks of it |
+| `debian.yml` | build, test | The `.deb`, built against Debian's own Python and packaged with nFPM, then read back |
+| `docker.yml` | build, build (arm64), push | A multi-platform image, pushed to GHCR on a release |
+| `version.yml` | release | release-please: the release pull request, then the tag and GitHub release |
+| `publish.yml` | package, assets, attest | The package to PyPI, files attached to the release, and their build provenance |
+| `pages.yml` | deploy | The built website, to GitHub Pages |
+| `patch.yml` | update | `forgepy sync`, then the packages in `uv.lock` with known vulnerabilities upgraded, each committed to `main` |
+| `merge.yml` | review, squash | A review request on Dependabot's pull requests, and their squash merge once the checks pass |
+
+The stages are `lint` (Ruff, basedpyright, `forgepy sync --check` and, in a `--jython` project, the Jython 2.7 check), `scan` (Gitleaks and OSV-Scanner), `test` (pytest with coverage), `build`, `check` (a check of a built result), `push`, `release`, `package`, `assets`, `attest`, `deploy`, `update`, `review` and `squash`.
+
+## When each pipeline runs
+
+| Event | Pipelines |
 | :--- | :--- |
-| `quality.yml` | Secret scanning (Gitleaks), dependency scanning (OSV-Scanner), Ruff, basedpyright, `forgepy sync --check`, and the Jython 2.7 check in `--jython` projects |
-| `testing.yml` | The full check suite: `quality.yml`, pytest, the build artifact, and dependency security patches on `main` |
-| `version.yml` | Automated versioning and GitHub releases via release-please |
-| `merge.yml` | Auto-merges Dependabot pull requests once checks pass, except GitHub Actions updates |
-| `review.yml` | Requests a review on Dependabot's and release-please's pull requests, which `CODEOWNERS` doesn't do in a private repository on GitHub Free |
-| `service.yml` | Pipeline for backends: testing, auto-merge, versioning |
-| `library.yml` | Pipeline for libraries: testing, auto-merge, versioning, then publishing to PyPI |
-| `debian.yml` | Pipeline for Debian-packaged backends: testing, auto-merge, versioning, then the `.deb` build |
-| `website.yml` | Pipeline for websites: testing, optional link and accessibility checks, auto-merge, versioning, then deployment to GitHub Pages |
-| `docker.yml` | Multi-platform Docker image build, pushed to GHCR on release; added as its own job by `--docker` |
+| Pull request | The checks (`library`, `service` or `website`, then the `debian` and `docker` builds), then `merge` on Dependabot's |
+| Push to `main` | `version`; on a release, the checks again, then `publish`, `pages` or the `docker` push |
+| `auto-merged` dispatch | The same as a push to `main`, and `patch` |
+| Manual run | The same as a push to `main`, and `patch` |
+| Weekly schedule | `patch` |
 
-## Calling the workflows
+A project without versioning has no release to wait for: its checks run on every push to `main` as well, and a website deploys from every push.
 
-Call a workflow from a job's `uses` keyword. `forgepy init` generates an `index.yml` for the selected mode; the examples below show what it contains.
+## Generated workflow
 
-Every generated `index.yml` starts with the same triggers and concurrency rule: a newer push cancels the pull request run it replaces, and a run on `main` is never cancelled, so a release is never created without being published.
+`forgepy init` writes `.github/workflows/.index.yml` for the selected mode. Every one starts with the same triggers and concurrency rule: a newer push to a pull request cancels the run it replaces, and every other run has a concurrency group of its own, so a run on `main`, running or queued, is never cancelled and a release is never created without being published.
 
 ```yaml
+name: index
+
 on:
   push:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
   repository_dispatch:
     types: [auto-merged]
+  schedule:
+    - cron: '17 3 * * 1'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
-```
-
-**Backend**, generated by `forgepy init --backend`:
-
-```yaml
-jobs:
-  service:
-    uses: apollogeddon/forgepy/.github/workflows/service.yml@main
-    permissions:
-      contents: write
-      pull-requests: write
-    with:
-      auto_patch: true
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 ```
 
 **Library**, generated by `forgepy init --library`:
 
 ```yaml
 jobs:
+  version:
+    if: ${{ github.event_name != 'pull_request' && github.event_name != 'schedule' }}
+    uses: apollogeddon/forgepy/.github/workflows/version.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+
   library:
+    needs: version
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.version.outputs.new_release_published == 'true') }}
     uses: apollogeddon/forgepy/.github/workflows/library.yml@main
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
-      id-token: write
-    with:
-      auto_patch: true
-```
 
-**Website**, generated by `forgepy init --website`:
-
-```yaml
-jobs:
-  website:
-    uses: apollogeddon/forgepy/.github/workflows/website.yml@main
-    permissions:
-      contents: write
-      pages: write
-      id-token: write
-      pull-requests: write
-    with:
-      auto_patch: true
-```
-
-**Debian**, generated by `forgepy init --debian`, calls `debian.yml` with the same permissions as the backend.
-
-**Docker**: `--docker` adds a separate `docker` job that runs after your pipeline job (backend, website or Debian) and uses its release outputs. Projects without Docker have no Docker job:
-
-```yaml
-jobs:
-  service:
-    # ...as above
-  docker:
-    needs: service
-    uses: apollogeddon/forgepy/.github/workflows/docker.yml@main
+  publish:
+    needs: [version, library]
+    if: ${{ !cancelled() && needs.library.result == 'success' && needs.version.outputs.new_release_published == 'true' }}
+    uses: apollogeddon/forgepy/.github/workflows/publish.yml@main
     permissions:
       contents: read
-      packages: write
+      id-token: write
+
+  patch:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}
+    uses: apollogeddon/forgepy/.github/workflows/patch.yml@main
+    permissions:
+      contents: write
+
+  merge:
+    needs: library
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' }}
+    uses: apollogeddon/forgepy/.github/workflows/merge.yml@main
     with:
-      push: ${{ github.ref == 'refs/heads/main' && needs.service.outputs.new_release_published == 'true' }}
-      version: ${{ needs.service.outputs.version }}
+      checks_passed: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    permissions:
+      contents: write
+      pull-requests: write
 ```
 
-## Common inputs
+The other modes differ only in their jobs:
 
-Most inputs are accepted by several workflows. The orchestrators (`service.yml`, `library.yml`, `debian.yml` and `website.yml`) pass them on to the workflows they call. The last column lists the workflows that accept each input.
+| Mode | Jobs |
+| :--- | :--- |
+| `--backend` | `version`, `service`, `patch`, `merge` |
+| `--library` | `version`, `library`, `publish`, `patch`, `merge` |
+| `--website` | `version`, `website`, `pages`, `patch`, `merge` |
+| `--debian` | `version`, `service`, `debian`, `publish` (the `.deb` attached to the release), `patch`, `merge` |
 
-| Input | Default | Description | Accepted by |
-| :--- | :--- | :--- | :--- |
-| `python_version` | `''` | Python version for every job. Empty reads the project's `.python-version`, and without one uses Python 3.13; see [Python version](../configuration.md#python-version) | All but `merge.yml`, `version.yml` and `docker.yml` |
-| `working_directory` | `'.'` | Directory containing `pyproject.toml` | All but `merge.yml` |
-| `runs_on` | `'ubuntu-latest'` | Runner label for the jobs; see [Choosing runners](reference.md#choosing-runners) | All |
-| `enable_secrets` | `true` | Run the Gitleaks secret scan | `quality.yml`, `testing.yml`, orchestrators |
-| `run_tests` | `true` | Run pytest. `forgepy init --no-testing` sets it to `false` | `testing.yml`, orchestrators |
-| `run_build` | `true` | Run the build job. `forgepy init --jython` sets it to `false` | `testing.yml`, `service.yml` |
-| `sync_args` | `''` | Extra arguments for every `uv sync`, such as `--group` to pick a dependency group | `quality.yml`, `testing.yml`, `service.yml` |
-| `build_command` | `'uv build'` (`'uv run zensical build'` in `website.yml`) | Command the build job runs | `testing.yml`, `website.yml` |
-| `artifact_name` | `'dist'` | Name of the build artifact passed between jobs | `testing.yml`, `library.yml`, `website.yml` |
-| `auto_patch` | `true` | On `main`, upgrade packages with known vulnerabilities in `uv.lock` and commit the result | `testing.yml`, orchestrators |
-| `enable_versioning` | `true` | Run release-please. `forgepy init --no-versioning` sets it to `false` | Orchestrators |
-| `test_on_push`, `test_release_prs` | `true` | Where the checks run; see [Checking once per change](reference.md#checking-once-per-change) | Orchestrators |
-| `reviewers` | `''` | Comma-separated logins to request a review of Dependabot's and release-please's pull requests from; empty means the repository's owner; see [review.yml](reference.md#reviewyml) | `review.yml`, `version.yml`, orchestrators |
+- `--docker` adds a `docker` job after the checks: it builds on pull requests, and builds and pushes on a release. `merge` waits for it, so a broken image stops a Dependabot merge.
+- `--jython` passes `run_build: false` to the checks: the scripts are deployed as they are, so there's nothing to build.
+- `--no-testing` passes `run_tests: false` to the checks, which skips their `test` stage.
+- `--no-versioning` leaves out `version` and `publish`: the checks, and a website's deploy, run on every push to `main` instead.
+- `--no-linting` needs nothing: forgepy's toolchain always installs Ruff and basedpyright, which run on their defaults without a project config.
 
-`library.yml` also takes `publish`, `website.yml` takes `auto_merge`, a checkout `ref`, a `pre_build_command` and the site checks, and `docker.yml` has its own inputs, listed in the [job reference](reference.md#dockeryml).
+The Python version isn't in `.index.yml`: every stage reads the project's `.python-version`; see [Python version](../configuration.md#python-version).
+
+### Upgrading from `index.yml`
+
+Earlier releases generated `.github/workflows/index.yml`, which called `library.yml`, `service.yml`, `website.yml` or `debian.yml` as one job. Once `init` has written `.index.yml`, it removes such a file when it's exactly as an earlier release generated it, ignoring line endings, trailing spaces and blank lines. One you've changed since, say to set `runs_on` or an older release's `--python`, is kept with a warning until you run `init --force`: move your changes to `.index.yml` first. An `index.yml` that calls none of forgepy's workflows is your own and is never removed; check it doesn't repeat `.index.yml`'s jobs. Nothing is removed when `init` kept an existing `.index.yml`. See [Inputs that moved](reference.md#inputs-that-moved) for a hand-written caller.
+
+A library's PyPI trusted publisher names the workflow file that publishes, so once `.index.yml` replaces `index.yml`, change the workflow name on your PyPI project's **Publishing** page to `.index.yml`.
 
 ## Secrets
 
-No secrets need passing. The workflows only use the `GITHUB_TOKEN` that every called workflow receives, so don't add `secrets: inherit`: it would hand every repository secret to a workflow in another repository. PyPI publishing uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) through OIDC, which is why the library job asks for `id-token: write`. `website.yml` takes one optional secret, `GH_TOKEN`, for a [pre-build command](reference.md#generating-content-before-the-build); pass it by name if you need it.
+None. The pipelines use only the run's `GITHUB_TOKEN`, which a called workflow gets without `secrets: inherit`. It drives release-please and the Dependabot merge, and pushes Docker images. PyPI publishing uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) through OIDC, which is why the `publish` job asks for `id-token: write`. Don't add `secrets: inherit`: it hands every repository secret to a workflow that lives in another repository. The check pipelines take one optional secret, `GH_TOKEN`, for a [pre-build command](reference.md#generating-content-before-the-build); pass it by name if you need it.
 
-GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch), and the push a Dependabot auto-merge makes to `main` doesn't run the pipeline either. The auto-merge job therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. Listen for it next to `push` and `pull_request`, as `init` does, so `main` is checked and release-please opens or updates its release pull request:
-
-```yaml
-  repository_dispatch:
-    types: [auto-merged]
-```
-
-The event runs on the default branch. A workflow that doesn't listen for it ignores it, and `main` waits for the next push as before.
+GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch), and the push a Dependabot merge makes to `main` doesn't run the pipeline either. The `merge` pipeline therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. `.index.yml` listens for it, so `main` runs `version` and release-please opens or updates its release pull request. The event runs on the default branch.
 
 ## Required permissions
 
-| Permission | Needed for |
-| :--- | :--- |
-| `contents: write` | release-please tags and releases |
-| `pull-requests: write` | release PRs and Dependabot auto-merge |
-| `id-token: write` | PyPI Trusted Publishing (library) and GitHub Pages (website) |
-| `pages: write` | GitHub Pages deployment (website) |
-| `packages: write` | Pushing Docker images to GHCR (the `docker` job) |
+Each root job grants what its pipeline's stages need, and nothing else:
 
-GitHub checks a called workflow's permissions against the caller's before running anything, so grant everything your mode needs even if a job would be skipped.
+| Root job | Permissions | Needed for |
+| :--- | :--- | :--- |
+| `library`, `service`, `website` | `contents: read`, `pull-requests: write` | Gitleaks' comment on a pull request it finds a secret in |
+| `debian` | `contents: read` | Checking out the project |
+| `docker` | `contents: read`, `packages: write` | Pushing to GHCR |
+| `version` | `contents: write`, `pull-requests: write` | release-please's tags, releases and release pull requests |
+| `publish` | `contents: read`, `id-token: write`; `contents: write` for `assets`; `attestations: write` for `attest` | Publishing to PyPI, attaching release files, attesting |
+| `pages` | `pages: write`, `id-token: write` | GitHub Pages |
+| `patch` | `contents: write` | Committing the patch |
+| `merge` | `contents: write`, `pull-requests: write` | The review request, the merge and the dispatch |
+
+GitHub checks a called workflow's permissions against the caller's before running anything, even a job that would be skipped. So a caller grants the union of what a pipeline's stages ask for. In `publish.yml`, `package` asks for exactly `contents: read` and `id-token: write`, so it never holds more, and every caller grants those (the `--debian` one too, though its `package` stage is off). `assets` and `attest` ask for nothing and take the caller's grant, so a caller grants `contents: write`, or `attestations: write`, only for the stage it turns on.
 
 ## Repository settings
 
-- For `website.yml`, set **Settings → Pages → Source** to **GitHub Actions**.
-- For Dependabot auto-merge, turn on **Settings → General → Allow auto-merge**, and make your CI checks required in a branch protection rule or ruleset so GitHub waits for them before merging.
-- For `library.yml`, add a [trusted publisher](https://docs.pypi.org/trusted-publishers/) for the repository on your PyPI project.
+- For a website, set **Settings → Pages → Source** to **GitHub Actions**.
+- For the Dependabot merge, turn on **Settings → General → Allow auto-merge**, and make your CI checks required in a branch protection rule or ruleset so GitHub waits for them before merging.
+- For a library, add a [trusted publisher](https://docs.pypi.org/trusted-publishers/) for the repository on your PyPI project, with `.index.yml` as its workflow.

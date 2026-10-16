@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  # sent by the auto-merge job, as a merge it makes starts no push run on main
+  repository_dispatch:
+    types: [auto-merged]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # never cancel a run on main mid-release, or the release is created but never published
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  service:
+    uses: apollogeddon/forgepy/.github/workflows/service.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      auto_patch: true
+
+  docker:
+    needs: service
+    uses: apollogeddon/forgepy/.github/workflows/docker.yml@main
+    permissions:
+      contents: read
+      packages: write
+    with:
+      push: ${{ github.ref == 'refs/heads/main' && needs.service.outputs.new_release_published == 'true' }}
+      version: ${{ needs.service.outputs.version }}

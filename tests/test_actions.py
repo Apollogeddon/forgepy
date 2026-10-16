@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import dataclasses
+import itertools
 import json
 import os
 import re
 import shutil
 import subprocess
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -14,193 +17,551 @@ import yaml
 
 from forgepy.config import DEBIAN_IMAGE, DEBIAN_PYTHON_VERSION, DEFAULT_PYTHON_VERSION, InitConfig
 from forgepy.core import init
+from forgepy.templates import legacy as legacy_templates
 from forgepy.templates import workflows as workflow_templates
 from forgepy.utils.filesystem import MemoryFileSystem
 
 WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
+FIXTURES = Path(__file__).parent / "fixtures" / "legacy"
 # PyYAML can produce non-str keys (YAML 1.1 parses a bare `on:` mapping key as
 # the bool True), so keys are Any here rather than str.
 YamlDoc = dict[Any, Any]
 
+FILES = sorted(path.name for path in WORKFLOWS_DIR.iterdir() if path.suffix == ".yml")
+ROOTS = [name for name in FILES if name.startswith(".")]
+PIPELINES = [name for name in FILES if not name.startswith(".")]
 
-def _workflow_files() -> list[Path]:
-    return sorted(WORKFLOWS_DIR.glob("*.yml"))
+# The spec's stages: a run page reads <pipeline> / <stage>, the same words in every forge
+STAGES: dict[str, list[str]] = {
+    "library": ["lint", "scan", "test", "build"],
+    "service": ["lint", "scan", "test", "test (windows)", "test (macos)", "test (databases)", "build"],
+    "website": ["lint", "scan", "test", "build", "check", "check (lighthouse)"],
+    "debian": ["build", "test"],
+    "docker": ["build", "test", "push"],
+    "version": ["release"],
+    "publish": ["package", "assets", "attest"],
+    # check: a check of the deployed site, which forgepy doesn't run yet
+    "pages": ["deploy", "check"],
+    "patch": ["update"],
+    "merge": ["review", "squash"],
+}
 
 
-@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
-def test_workflow_yaml_parses(path: Path):
-    with path.open(encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
+def _load_text(text: str) -> YamlDoc:
+    return cast(YamlDoc, yaml.safe_load(text))
+
+
+def _load(name: str) -> YamlDoc:
+    return _load_text((WORKFLOWS_DIR / name).read_text(encoding="utf-8"))
+
+
+def _on(doc: YamlDoc) -> YamlDoc:
+    return cast(YamlDoc, doc.get(True) or doc.get("on") or {})
+
+
+def _workflow_call(name: str) -> YamlDoc:
+    return cast(YamlDoc, _on(_load(name)).get("workflow_call") or {})
+
+
+def _jobs(name: str) -> YamlDoc:
+    return cast(YamlDoc, _load(name)["jobs"])
+
+
+def _steps(name: str, job: str) -> list[YamlDoc]:
+    return cast(list[YamlDoc], _jobs(name)[job]["steps"])
+
+
+def _step(name: str, job: str, step: str) -> YamlDoc:
+    return next(s for s in _steps(name, job) if s.get("name") == step)
+
+
+def _in_vocabulary(pipeline: str, name: str) -> bool:
+    """A stage, or a stage with a variant in brackets."""
+    stages = STAGES.get(pipeline, [])
+    return name in stages or re.sub(r" \([^)]+\)$", "", name) in stages
+
+
+def _kebab(name: str) -> str:
+    return re.sub(r"\s+", "-", re.sub(r"[()]", "", name).strip())
+
+
+MODES: list[tuple[str, workflow_templates.IndexWorkflowOptions]] = []
+for _mode, _debian, _docker, _versioning, _testing, _build in itertools.product(
+    ("library", "service", "website"), (False, True), (False, True), (True, False), (True, False), (True, False)
+):
+    # --debian and --jython are backend-only, and a library has no Docker image
+    if (_debian or not _build) and _mode != "service":
+        continue
+    if _docker and _mode == "library":
+        continue
+    _id = (
+        f"{_mode}{' debian' if _debian else ''}{' docker' if _docker else ''}"
+        f"{'' if _versioning else ' no-versioning'}{'' if _testing else ' no-testing'}{'' if _build else ' jython'}"
+    )
+    MODES.append(
+        (
+            _id,
+            workflow_templates.IndexWorkflowOptions(
+                mode=_mode, debian=_debian, docker=_docker, versioning=_versioning, testing=_testing, build=_build
+            ),
+        )
+    )
+GENERATED = [(name, workflow_templates.index_workflow(cfg)) for name, cfg in MODES]
+
+
+# --- the workflow files ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", FILES)
+def test_workflow_yaml_parses(name: str):
+    doc = _load(name)
     assert isinstance(doc, dict)
     assert "jobs" in doc
 
 
-def _local_workflow_refs(doc: YamlDoc) -> list[str]:
-    refs: list[str] = []
-    jobs: YamlDoc = doc.get("jobs") or {}
-    for raw_job in jobs.values():
-        if not isinstance(raw_job, dict):
+def test_has_the_forge_pipelines_forgepy_needs_and_one_root_workflow():
+    assert ROOTS == [".index.yml"]
+    assert _load(".index.yml")["name"] == "index"
+    assert {name.removesuffix(".yml") for name in PIPELINES} == set(STAGES)
+
+
+@pytest.mark.parametrize("name", PIPELINES)
+def test_pipeline_is_only_ever_called(name: str):
+    doc = _load(name)
+    assert list(_on(doc)) == ["workflow_call"]
+    assert doc["name"] == name.removesuffix(".yml")
+
+
+# a pipeline calling another would add a third level to the run page's names
+@pytest.mark.parametrize("name", PIPELINES)
+def test_pipeline_calls_no_other_pipeline(name: str):
+    for job_id, job in _jobs(name).items():
+        assert "uses" not in job, f"{name}:{job_id}"
+
+
+@pytest.mark.parametrize("name", PIPELINES)
+def test_pipeline_names_every_job_with_a_stage_from_the_spec(name: str):
+    pipeline = name.removesuffix(".yml")
+    for job_id, job in _jobs(name).items():
+        assert "name" in job, f"{name}:{job_id} has no name"
+        assert _in_vocabulary(pipeline, job["name"]), f"{name}:{job_id} is named {job['name']!r}"
+        # the job id is the stage in kebab case
+        assert job_id == _kebab(job["name"])
+
+
+@pytest.mark.parametrize("name", FILES)
+def test_names_every_step(name: str):
+    for job_id, job in _jobs(name).items():
+        for step in job.get("steps", []):
+            assert step.get("name"), f"{name}:{job_id} has an unnamed step"
+
+
+@pytest.mark.parametrize("name", PIPELINES)
+def test_pipeline_jobs_ask_for_their_own_permissions(name: str):
+    """A job that asks for none takes its caller's grant, which only publish's assets and attest do on purpose."""
+    for job_id, job in _jobs(name).items():
+        if (name, job_id) in {("publish.yml", "assets"), ("publish.yml", "attest")}:
+            assert "permissions" not in job
+        else:
+            assert "permissions" in job, f"{name}:{job_id}"
+
+
+@pytest.mark.skipif(shutil.which("actionlint") is None, reason="needs actionlint")
+def test_workflows_and_every_generated_index_pass_actionlint(tmp_path: Path):
+    # actionlint reads workflows from a .github/workflows directory
+    generated = tmp_path / ".github" / "workflows"
+    generated.mkdir(parents=True)
+    for index, (_, text) in enumerate(GENERATED):
+        (generated / f"index-{index}.yml").write_text(text, encoding="utf-8")
+    files = [str(WORKFLOWS_DIR / name) for name in FILES] + sorted(str(path) for path in generated.iterdir())
+    result = subprocess.run(["actionlint", *files], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+# --- wiring: a caller's inputs, secrets, outputs and permissions match what it calls -------------
+
+_LEVELS = {"none": 0, "read": 1, "write": 2}
+
+
+def _expect_wiring(caller: str, doc: YamlDoc, resolve: Callable[[str], str | None]) -> None:
+    for job_id, job in doc["jobs"].items():
+        if "uses" not in job:
+            assert job_id == "changes", f"{caller}:{job_id} runs steps itself"
             continue
-        job = cast(YamlDoc, raw_job)
-        uses = job.get("uses")
-        if isinstance(uses, str) and uses.startswith("./.github/workflows/"):
-            refs.append(uses.removeprefix("./"))
-    return refs
+        callee = resolve(job["uses"])
+        assert callee is not None, f"{caller}:{job_id} calls {job['uses']}"
+        assert (WORKFLOWS_DIR / callee).exists(), f"{caller}:{job_id} calls missing {callee}"
+        pipeline = callee.removesuffix(".yml")
+        # the root job's id is the pipeline's name, and a variant, or a matrix leg, names itself in brackets
+        if job_id != pipeline or "name" in job:
+            assert re.fullmatch(rf"{pipeline} \([^)]+\)", job.get("name", "")), f"{caller}:{job_id}"
+        call = _workflow_call(callee)
+        declared: YamlDoc = call.get("inputs") or {}
+        passed: YamlDoc = job.get("with") or {}
+        for key in passed:
+            assert key in declared, f"{caller}:{job_id} passes undeclared input {key!r} to {callee}"
+        for key, spec in declared.items():
+            if spec.get("required"):
+                assert key in passed, f"{caller}:{job_id} misses required {key}"
+        # the pipelines only use GITHUB_TOKEN, which they get without inheriting every secret
+        assert "secrets" not in job, f"{caller}:{job_id} passes secrets"
+        # GitHub refuses the whole run when a called job asks for more than its caller grants
+        grant: YamlDoc = job.get("permissions") or {}
+        for called_id, called in _jobs(callee).items():
+            asked: dict[str, str] = called.get("permissions") or {}
+            for scope, level in asked.items():
+                granted = _LEVELS[grant.get(scope, "none")]
+                assert granted >= _LEVELS[level], f"{caller}:{job_id} grants {callee}:{called_id} too little {scope}"
+    # every pipeline output a job reads is one its pipeline declares
+    for needed, output in re.findall(r"needs\.([\w-]+)\.outputs\.(\w+)", yaml.safe_dump(doc)):
+        uses = doc["jobs"].get(needed, {}).get("uses")
+        callee = resolve(uses) if uses else None
+        if callee:
+            assert output in (_workflow_call(callee).get("outputs") or {}), f"{caller} reads {needed}.{output}"
 
 
-@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
-def test_local_workflow_references_exist(path: Path):
-    with path.open(encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
-
-    repo_root = WORKFLOWS_DIR.parent.parent
-    for ref in _local_workflow_refs(doc):
-        assert (repo_root / ref).exists(), f"{path.name} references missing workflow {ref}"
+def _local(uses: str) -> str | None:
+    return uses.removeprefix("./.github/workflows/") if uses.startswith("./.github/workflows/") else None
 
 
-def _declared_inputs(doc: YamlDoc) -> set[str]:
-    on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
-    workflow_call: YamlDoc = on_block.get("workflow_call") or {}
-    inputs: YamlDoc = workflow_call.get("inputs") or {}
-    return set(inputs.keys())
+def _at_main(uses: str) -> str | None:
+    match = re.fullmatch(r"apollogeddon/forgepy/\.github/workflows/([\w-]+\.yml)@main", uses)
+    return match.group(1) if match else None
 
 
-@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
-def test_with_inputs_are_declared_by_callee(path: Path):
-    with path.open(encoding="utf-8") as f:
-        doc: YamlDoc = yaml.safe_load(f)
-
-    repo_root = WORKFLOWS_DIR.parent.parent
-    jobs: YamlDoc = doc.get("jobs") or {}
-    for raw_job in jobs.values():
-        if not isinstance(raw_job, dict):
-            continue
-        job = cast(YamlDoc, raw_job)
-        uses = job.get("uses")
-        with_block: YamlDoc = job.get("with") or {}
-        if not (isinstance(uses, str) and uses.startswith("./.github/workflows/") and with_block):
-            continue
-
-        callee_path = repo_root / uses.removeprefix("./")
-        with callee_path.open(encoding="utf-8") as f:
-            callee_doc: YamlDoc = yaml.safe_load(f)
-        declared = _declared_inputs(callee_doc)
-        for key in with_block:
-            assert key in declared, f"{path.name} passes undeclared input '{key}' to {uses}"
+def _merge_dispatch_type() -> str:
+    step = next(s for s in _steps("merge.yml", "squash") if "createDispatchEvent" in s["with"]["script"])
+    return cast(str, step["env"]["DISPATCH_TYPE"])
 
 
-def test_generated_index_yml_references_exist():
-    """Generated workflows reference apollogeddon/forgepy@main; this repo is what @main serves."""
-    for template in (
-        workflow_templates.LIBRARY_WORKFLOW,
-        workflow_templates.SERVICE_WORKFLOW,
-        workflow_templates.WEBSITE_WORKFLOW,
-        workflow_templates.DEBIAN_WORKFLOW,
+_CONCURRENCY = {"group": "${{ github.workflow }}-${{ github.head_ref || github.run_id }}", "cancel-in-progress": True}
+_PATCH_EVENTS = (
+    "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+    " || github.event_name == 'repository_dispatch'"
+)
+
+
+# --- forgepy's own .index.yml ----------------------------------------------------------------------
+
+
+class TestOwnIndex:
+    doc = _load(".index.yml")
+
+    def test_calls_only_local_pipelines_with_inputs_they_declare_and_the_permissions_they_need(self):
+        _expect_wiring(".index.yml", self.doc, _local)
+
+    def test_keeps_its_change_detection_as_a_root_job(self):
+        changes = self.doc["jobs"]["changes"]
+        assert changes["name"] == "changes"
+        assert changes["outputs"] == {
+            "code": "${{ steps.diff.outputs.code }}",
+            "docs": "${{ steps.diff.outputs.docs }}",
+        }
+
+    def test_checks_the_tool_as_a_library_and_the_docs_as_a_website(self):
+        jobs = self.doc["jobs"]
+        assert jobs["library"]["uses"] == "./.github/workflows/library.yml"
+        assert jobs["website"]["uses"] == "./.github/workflows/website.yml"
+        assert jobs["website"]["with"]["working_directory"] == "docs"
+        assert jobs["pages"]["with"]["artifact_name"] == jobs["website"]["with"]["artifact_name"]
+        # forgepy isn't on PyPI
+        assert "publish" not in jobs
+
+    def test_has_the_same_concurrency_as_a_generated_index(self):
+        assert self.doc["concurrency"] == _load_text(GENERATED[0][1])["concurrency"] == _CONCURRENCY
+
+    def test_patches_the_tool_and_the_docs_one_after_the_other_on_the_schedule_a_manual_run_and_a_merge(self):
+        jobs = self.doc["jobs"]
+        assert jobs["patch"]["if"] == _PATCH_EVENTS
+        assert _PATCH_EVENTS in jobs["patch-docs"]["if"]
+        assert jobs["patch-docs"]["needs"] == "patch"
+        assert jobs["patch-docs"]["with"]["working_directory"] == "docs"
+        assert {"schedule", "workflow_dispatch", "repository_dispatch"} <= set(_on(self.doc))
+
+    def test_listens_for_the_merge_pipelines_dispatch(self):
+        assert _on(self.doc)["repository_dispatch"]["types"] == [_merge_dispatch_type()]
+
+    def test_merges_dependabot_pull_requests_only_after_every_check(self):
+        merge = self.doc["jobs"]["merge"]
+        assert set(merge["needs"]) == {"changes", "library", "website"}
+        assert "!contains(needs.*.result, 'failure')" in merge["with"]["checks_passed"]
+
+
+# --- the generated .index.yml ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("name", "text"), GENERATED, ids=[name for name, _ in GENERATED])
+class TestGeneratedIndex:
+    def test_calls_forgepys_pipelines_at_main_with_inputs_they_declare_and_the_permissions_they_need(
+        self, name: str, text: str
     ):
-        docker = template is not workflow_templates.LIBRARY_WORKFLOW
-        inputs = {"run_tests": False, "enable_versioning": False}
-        rendered = workflow_templates.render(template, docker=docker, inputs=inputs)
-        doc = yaml.safe_load(rendered)
-        for job in doc["jobs"].values():
-            uses = job.get("uses")
-            if uses is None:
-                continue
-            assert uses.startswith("apollogeddon/forgepy/.github/workflows/")
-            filename = uses.split("/")[-1].split("@")[0]
-            assert (WORKFLOWS_DIR / filename).exists(), f"generated workflow references missing {filename}"
-            with (WORKFLOWS_DIR / filename).open(encoding="utf-8") as f:
-                declared = _declared_inputs(yaml.safe_load(f))
-            with_block: YamlDoc = job.get("with") or {}
-            for key in with_block:
-                assert key in declared, f"generated workflow passes undeclared input '{key}' to {filename}"
+        _expect_wiring(f"generated {name}", _load_text(text), _at_main)
+
+    def test_listens_for_the_merge_pipelines_dispatch(self, name: str, text: str):  # noqa: ARG002
+        assert _on(_load_text(text))["repository_dispatch"]["types"] == [_merge_dispatch_type()]
+
+    # each run outside a pull request has a group of its own, so a queued run on main is never cancelled
+    def test_cancels_only_a_pull_requests_older_run(self, name: str, text: str):  # noqa: ARG002
+        assert _load_text(text)["concurrency"] == _CONCURRENCY
+
+    def test_patches_on_the_weekly_schedule_a_manual_run_and_a_dependabot_merge(self, name: str, text: str):  # noqa: ARG002
+        doc = _load_text(text)
+        assert doc["jobs"]["patch"]["if"] == f"${{{{ {_PATCH_EVENTS} }}}}"
+        assert {"schedule", "workflow_dispatch", "repository_dispatch"} <= set(_on(doc))
+
+    # only PyPI Trusted Publishing and GitHub Pages need an OIDC token
+    def test_asks_for_id_token_only_to_publish_or_deploy(self, name: str, text: str):  # noqa: ARG002
+        for job_id, job in _load_text(text)["jobs"].items():
+            if job_id not in ("publish", "pages"):
+                assert "id-token" not in job["permissions"], job_id
+
+    # the Python version lives in .python-version, which the pipelines read
+    def test_leaves_the_python_version_to_the_python_version_file(self, name: str, text: str):  # noqa: ARG002
+        assert "python_version" not in text
 
 
-@pytest.mark.parametrize("name", ["service.yml", "website.yml", "debian.yml"])
-def test_pipelines_expose_release_outputs_for_docker_job(name: str):
-    """The generated docker job reads the pipeline's version outputs to decide when to push."""
-    with (WORKFLOWS_DIR / name).open(encoding="utf-8") as f:
-        doc: YamlDoc = yaml.safe_load(f)
-    on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
-    workflow_call: YamlDoc = on_block.get("workflow_call") or {}
-    outputs: YamlDoc = workflow_call.get("outputs") or {}
-    assert {"new_release_published", "version"} <= set(outputs)
+def _generated_jobs(**options: Any) -> YamlDoc:
+    cfg = dataclasses.replace(workflow_templates.IndexWorkflowOptions(mode="service"), **options)
+    return cast(YamlDoc, _load_text(workflow_templates.index_workflow(cfg))["jobs"])
 
 
-def _version_job() -> YamlDoc:
-    with (WORKFLOWS_DIR / "version.yml").open(encoding="utf-8") as f:
-        doc: YamlDoc = yaml.safe_load(f)
-    return doc["jobs"]["release-please"]
+@pytest.mark.parametrize(
+    ("options", "jobs"),
+    [
+        ({"mode": "library"}, ["version", "library", "publish", "patch", "merge"]),
+        ({"mode": "service"}, ["version", "service", "patch", "merge"]),
+        ({"mode": "website"}, ["version", "website", "pages", "patch", "merge"]),
+        ({"debian": True}, ["version", "service", "debian", "publish", "patch", "merge"]),
+        ({"docker": True}, ["version", "service", "docker", "patch", "merge"]),
+        ({"mode": "library", "versioning": False}, ["library", "patch", "merge"]),
+        ({"mode": "website", "versioning": False}, ["website", "pages", "patch", "merge"]),
+        ({"debian": True, "versioning": False}, ["service", "debian", "patch", "merge"]),
+    ],
+)
+def test_generated_index_has_the_jobs_for_its_mode(options: YamlDoc, jobs: list[str]):
+    assert list(_generated_jobs(**options)) == jobs
 
 
-def test_version_reads_the_working_directory_release_config():
-    """A project in a sub-directory keeps its release-please config in its own .github/."""
-    release = next(s for s in _version_job()["steps"] if s.get("uses", "").startswith("googleapis/release-please"))
-    for key, file in (("config-file", "release.json"), ("manifest-file", ".release.json")):
-        assert f"format('{{0}}/.github/{file}', inputs.working_directory)" in release["with"][key]
+def test_generated_index_turns_off_the_stages_a_project_doesnt_have():
+    assert _generated_jobs(testing=False)["service"]["with"] == {"run_tests": False}
+    assert _generated_jobs(build=False)["service"]["with"] == {"run_build": False}
+    assert "with" not in _generated_jobs()["service"]
 
 
-@pytest.mark.parametrize("key", ["release_created", "version", "tag_name"])
-def test_version_reads_the_working_directory_package_outputs(key: str):
-    """release-please prefixes a sub-directory package's outputs with its path."""
-    assert f"format('{{0}}--{key}', inputs.working_directory)" in _version_job()["outputs"][key]
+def test_generated_index_checks_a_release_before_shipping_it_and_every_pull_request():
+    jobs = _generated_jobs(mode="library")
+    assert "needs.version.outputs.new_release_published == 'true'" in jobs["library"]["if"]
+    assert "github.event_name == 'pull_request'" in jobs["library"]["if"]
+    assert "needs.library.result == 'success'" in jobs["publish"]["if"]
+    assert jobs["publish"]["permissions"] == {"contents": "read", "id-token": "write"}
 
 
-def test_version_counts_any_package_release_only_for_the_root_package():
-    """releases_created is true when any package is released, not just this one."""
-    workflow = yaml.safe_load((WORKFLOWS_DIR / "version.yml").read_text(encoding="utf-8"))
-    published = workflow[True]["workflow_call"]["outputs"]["new_release_published"]["value"]
-    before_root_clause, root_clause = published.split("inputs.working_directory == '.' && ", 1)
-    assert "releases_created" not in before_root_clause
-    assert root_clause.startswith("(jobs.release-please.outputs.releases_created")
+def test_generated_index_pushes_the_image_only_on_a_release():
+    assert _generated_jobs(docker=True)["docker"]["with"]["push"] == (
+        "${{ needs.version.outputs.new_release_published == 'true' }}"
+    )
+    assert "with" not in _generated_jobs(docker=True, versioning=False)["docker"]
 
 
-def test_generated_jython_workflow_inputs_are_declared():
-    rendered = workflow_templates.render(workflow_templates.SERVICE_WORKFLOW, inputs={"run_build": False})
-    job = yaml.safe_load(rendered)["jobs"]["service"]
-    with (WORKFLOWS_DIR / "service.yml").open(encoding="utf-8") as f:
-        declared = _declared_inputs(yaml.safe_load(f))
-    assert set(job["with"]) <= declared
+def test_generated_index_attaches_the_deb_to_the_release():
+    assert _generated_jobs(debian=True)["publish"]["with"] == {
+        "package": False,
+        "assets": "debian-package",
+        "tag_name": "${{ needs.version.outputs.tag_name }}",
+    }
+    assert _workflow_call("debian.yml")["outputs"]["package_artifact"]["value"] == "debian-package"
 
 
-def _jobs(name: str) -> YamlDoc:
-    return yaml.safe_load((WORKFLOWS_DIR / name).read_text(encoding="utf-8"))["jobs"]
+def test_generated_index_deploys_every_change_to_main_when_the_site_isnt_versioned():
+    assert _generated_jobs(mode="website", versioning=False)["pages"]["if"] == (
+        "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}"
+    )
 
 
-@pytest.mark.parametrize("name", ["library.yml", "service.yml", "website.yml", "debian.yml"])
-def test_dependabot_pull_requests_request_a_review(name: str):
-    """CODEOWNERS requests nothing in a private repo on a free plan, so each pipeline asks itself, before the checks."""
+def test_generated_index_merges_a_dependabot_pull_request_only_when_every_check_passed():
+    merge = _generated_jobs(debian=True, docker=True)["merge"]
+    assert merge["needs"] == ["service", "debian", "docker"]
+    assert merge["with"]["checks_passed"] == (
+        "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("uses: apollogeddon/forgepy/.github/workflows/library.yml@main", True),
+        ("uses: Apollogeddon/forgepy/.github/workflows/service.yml@main", True),
+        ("uses: someone/else/.github/workflows/ci.yml@v1", False),
+        ("runs-on: ubuntu-latest", False),
+    ],
+)
+def test_recognises_a_workflow_calling_forgepy(content: str, *, expected: bool):
+    assert workflow_templates.calls_forgepy(content) is expected
+
+
+# --- workflows an earlier forgepy generated --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "fixture", ["backend.yml", "library.yml", "website.yml", "debian.yml", "backend-docker.yml", "backend-v0.2.0.yml"]
+)
+def test_knows_the_index_yml_an_earlier_forgepy_wrote(fixture: str):
+    content = (FIXTURES / fixture).read_text(encoding="utf-8")
+    assert legacy_templates.is_legacy_workflow(".github/workflows/index.yml", content)
+
+
+def test_legacy_ignores_line_endings_trailing_spaces_and_blank_lines():
+    content = (FIXTURES / "library.yml").read_text(encoding="utf-8").replace("\n", "  \r\n\r\n")
+    assert legacy_templates.is_legacy_workflow(".github/workflows/index.yml", content)
+
+
+def test_legacy_doesnt_know_a_changed_one_or_one_under_another_name():
+    content = (FIXTURES / "library.yml").read_text(encoding="utf-8")
+    changed = content.replace("    with:\n", "    with:\n      runs_on: xerus\n")
+    assert not legacy_templates.is_legacy_workflow(".github/workflows/index.yml", changed)
+    assert not legacy_templates.is_legacy_workflow(".github/workflows/build.yml", content)
+
+
+def test_legacy_doesnt_know_what_this_forgepy_generates():
+    for _, text in GENERATED:
+        assert not legacy_templates.is_legacy_workflow(".github/workflows/index.yml", text)
+
+
+# --- the check pipelines --------------------------------------------------------------------------
+
+CHECKS = ["library.yml", "service.yml", "website.yml"]
+
+
+@pytest.mark.parametrize("name", CHECKS)
+def test_check_pipelines_share_their_lint_scan_test_and_build_stages(name: str):
     jobs = _jobs(name)
-    review = jobs["review"]
-    assert review["uses"] == "./.github/workflows/review.yml"
-    assert "needs" not in review
-    assert "github.event.pull_request.user.login == 'dependabot[bot]'" in review["if"]
-    assert review["with"]["reviewers"] == "${{ inputs.reviewers }}"
-    assert jobs["version"]["with"]["reviewers"] == "${{ inputs.reviewers }}"
+    assert [jobs[stage]["name"] for stage in ("lint", "scan", "test", "build")] == ["lint", "scan", "test", "build"]
+    assert jobs["test"]["needs"] == ["lint", "scan"]
+    # only needs the lint and scan to pass, so it runs alongside the tests
+    assert jobs["build"]["needs"] == ["lint", "scan"]
+    assert jobs["test"]["if"] == "inputs.run_tests"
 
 
-def test_release_pull_request_requests_a_review():
-    review = _jobs("version.yml")["review"]
-    assert review["needs"] == ["release-please"]
-    assert review["with"]["pull_request"] == "${{ needs.release-please.outputs.pr_number }}"
+# what ignition-demo and the other consumers pass, including a matrix of API groups through sync_args
+@pytest.mark.parametrize("name", CHECKS)
+@pytest.mark.parametrize(
+    "key",
+    [
+        "runs_on",
+        "working_directory",
+        "python_version",
+        "enable_secrets",
+        "run_tests",
+        "sync_args",
+        "build_command",
+        "artifact_name",
+        "ref",
+        "pre_build_command",
+    ],
+)
+def test_check_pipelines_keep_the_inputs_consumers_pass(name: str, key: str):
+    assert key in _workflow_call(name)["inputs"]
 
 
-def test_review_request_never_fails_the_pipeline():
-    script = (WORKFLOWS_DIR / "review.yml").read_text(encoding="utf-8")
-    assert "catch (error)" in script
-    assert "core.warning" in script
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+def test_check_pipelines_skip_the_build_with_run_build_false(name: str):
+    assert _workflow_call(name)["inputs"]["run_build"]["default"] is True
+    assert _jobs(name)["build"]["if"] == "inputs.run_build"
+
+
+# a matrix caller's legs each name their artifacts, so two legs never upload under one name
+@pytest.mark.parametrize("name", CHECKS)
+def test_check_pipelines_name_their_uploads_after_the_artifact(name: str):
+    assert _step(name, "test", "Upload coverage")["with"]["name"] == "coverage-${{ inputs.artifact_name }}"
+    assert _step(name, "build", "Upload the build")["with"]["name"] == "${{ inputs.artifact_name }}"
+
+
+def test_a_matrix_of_api_groups_calls_the_library_pipeline_as_variants():
+    """As ignition-demo checks its Jython scripts once per Ignition API, each leg named `library (<api>)`."""
+    caller = _load_text("""
+on: pull_request
+jobs:
+  library:
+    name: library (${{ matrix.api }})
+    strategy:
+      matrix:
+        include:
+          - { api: "8.1", group: ignition81 }
+          - { api: "8.3", group: ignition83 }
+    uses: apollogeddon/forgepy/.github/workflows/library.yml@main
+    with:
+      working_directory: projects
+      sync_args: --no-default-groups --group dev --group ${{ matrix.group }}
+      run_build: false
+      artifact_name: projects-${{ matrix.group }}
+    permissions:
+      contents: read
+      pull-requests: write
+""")
+    job = caller["jobs"]["library"]
+    job["name"] = re.sub(r"\$\{\{ matrix\.api \}\}", "8.1", job["name"])
+    _expect_wiring("matrix caller", caller, _at_main)
+
+
+@pytest.mark.parametrize("name", CHECKS)
+def test_lint_stage_runs_ruff_basedpyright_and_forgepys_checks(name: str):
+    runs = [step.get("run", "") for step in _steps(name, "lint")]
+    for command in (
+        "uv run ruff check .",
+        "uv run ruff format --check .",
+        "uv run basedpyright",
+        "uv run poe compat",
+        "uv run forgepy sync --check",
+    ):
+        assert command in runs
+    assert _step(name, "lint", "Check Jython 2.7 compatibility")["if"].startswith("hashFiles(")
+
+
+@pytest.mark.parametrize("name", CHECKS)
+def test_test_stage_runs_pytest_with_coverage(name: str):
+    assert _step(name, "test", "Test")["run"] == "uv run pytest"
+    upload = _step(name, "test", "Upload coverage")
+    assert upload["if"] == "always()"
+    assert "htmlcov" in upload["with"]["path"]
+
+
+@pytest.mark.parametrize(("name", "default"), [("library.yml", "uv build"), ("website.yml", "uv run zensical build")])
+def test_build_stage_runs_the_build_command_through_the_environment(name: str, default: str):
+    assert _workflow_call(name)["inputs"]["build_command"]["default"] == default
+    build = _step(name, "build", "Build")
+    assert "${{" not in build["run"]
+    assert build["env"] == {"BUILD_COMMAND": "${{ inputs.build_command }}"}
+
+
+@pytest.mark.parametrize(("name", "job"), [(name, job) for name in CHECKS for job in ("lint", "scan", "test", "build")])
+def test_jobs_check_out_the_ref(name: str, job: str):
+    assert _step(name, job, "Check out")["with"]["ref"] == "${{ inputs.ref }}"
+
+
+@pytest.mark.parametrize(("name", "job"), [(name, job) for name in CHECKS for job in ("lint", "test", "build")])
+def test_pre_build_command_runs_before_installing(name: str, job: str):
+    names = [step.get("name") for step in _steps(name, job)]
+    assert names.index("Run the pre-build command") < names.index("Install dependencies")
+    hook = _step(name, job, "Run the pre-build command")
+    assert hook["if"] == "inputs.pre_build_command != ''"
+    # through the environment, never interpolated into the script
+    assert "${{" not in hook["run"]
+    assert hook["env"] == {
+        "GH_TOKEN": "${{ secrets.GH_TOKEN }}",
+        "PRE_BUILD_COMMAND": "${{ inputs.pre_build_command }}",
+    }
+    assert _workflow_call(name)["secrets"]["GH_TOKEN"]["required"] is False
 
 
 _SETUP_PYTHON = re.compile(r"uses: actions/setup-python@\S+\n\s+with:\n\s+python-version: (.+)")
 
 
 @pytest.mark.parametrize(
-    "path",
-    [p for p in _workflow_files() if "uses: actions/setup-python" in p.read_text(encoding="utf-8")],
-    ids=lambda p: p.name,
+    "name", [name for name in FILES if "uses: actions/setup-python" in (WORKFLOWS_DIR / name).read_text("utf-8")]
 )
-def test_setup_python_uses_the_resolved_version(path: Path):
+def test_setup_python_uses_the_resolved_version(name: str):
     """The input wins, then the project's .python-version, then forgepy's default, which must match what init pins."""
-    content = path.read_text(encoding="utf-8")
+    content = (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
     setups = _SETUP_PYTHON.findall(content)
     assert setups
     assert all(version == "${{ steps.python.outputs.version }}" for version in setups)
@@ -208,62 +569,16 @@ def test_setup_python_uses_the_resolved_version(path: Path):
     assert "elif [ -f .python-version ]" in content
 
 
-@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
-def test_python_version_input_defaults_to_empty(path: Path):
-    doc: YamlDoc = yaml.safe_load(path.read_text(encoding="utf-8"))
-    on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
-    workflow_call: YamlDoc = on_block.get("workflow_call") or {}
-    inputs: YamlDoc = workflow_call.get("inputs") or {}
+@pytest.mark.parametrize("name", PIPELINES)
+def test_python_version_input_defaults_to_empty(name: str):
+    inputs: YamlDoc = _workflow_call(name).get("inputs") or {}
     if "python_version" in inputs:
         assert inputs["python_version"]["default"] == ""
 
 
-def test_debian_build_runs_in_the_image_init_checks_python_against():
-    build: YamlDoc = yaml.safe_load((WORKFLOWS_DIR / "debian.yml").read_text(encoding="utf-8"))["jobs"]["build-deb"]
-    assert build["container"] == DEBIAN_IMAGE
+# --- website site checks --------------------------------------------------------------------------
 
 
-def _minor(version: str) -> tuple[int, int]:
-    major, minor = version.split(".")[:2]
-    return int(major), int(minor)
-
-
-def test_debian_build_images_python_meets_a_default_debian_projects_requires_python():
-    """The deb is built against the image's python3, so it must satisfy what init writes for a --debian project."""
-    fs = MemoryFileSystem()
-    project = Path("project")
-    assert init(InitConfig(target=project, debian=True), fs) == 0
-    requires = tomllib.loads(fs.read_text(project / "pyproject.toml"))["project"]["requires-python"]
-    floor = re.fullmatch(r">=(\d+\.\d+)(?:\.\d+)?", requires)
-    assert floor is not None
-    assert _minor(floor.group(1)) <= _minor(DEBIAN_PYTHON_VERSION)
-    assert _minor(fs.read_text(project / ".python-version").strip()) <= _minor(DEBIAN_PYTHON_VERSION)
-
-
-def test_generated_workflow_leaves_the_version_to_python_version_file():
-    for template in (workflow_templates.SERVICE_WORKFLOW, workflow_templates.LIBRARY_WORKFLOW):
-        assert "python_version" not in workflow_templates.render(template)
-
-
-def _workflow_call(name: str) -> YamlDoc:
-    doc: YamlDoc = yaml.safe_load((WORKFLOWS_DIR / name).read_text(encoding="utf-8"))
-    on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
-    return on_block.get("workflow_call") or {}
-
-
-@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
-def test_passed_secrets_are_declared_by_callee(path: Path):
-    for job in _jobs(path.name).values():
-        uses = job.get("uses")
-        secrets: YamlDoc = job.get("secrets") or {}
-        if not (isinstance(uses, str) and uses.startswith("./.github/workflows/")):
-            continue
-        callee_secrets: YamlDoc = _workflow_call(uses.split("/")[-1]).get("secrets") or {}
-        for key in secrets:
-            assert key in callee_secrets, f"{path.name} passes undeclared secret '{key}' to {uses}"
-
-
-# every new input keeps what a caller that doesn't set it already gets
 @pytest.mark.parametrize(
     ("name", "default"),
     [
@@ -282,61 +597,15 @@ def test_website_inputs_default_to_what_callers_had(name: str, default: object):
     assert _workflow_call("website.yml")["inputs"][name]["default"] == default
 
 
-@pytest.mark.parametrize("job", ["testing", "release-testing"])
-def test_website_passes_the_build_options_to_testing(job: str):
-    call = _jobs("website.yml")[job]
-    for name in ("ref", "pre_build_command"):
-        assert call["with"][name] == f"${{{{ inputs.{name} }}}}"
-    assert call["secrets"] == {"GH_TOKEN": "${{ secrets.GH_TOKEN }}"}
-
-
-def test_testing_passes_the_build_options_to_quality():
-    call = _jobs("testing.yml")["quality"]
-    for name in ("ref", "pre_build_command"):
-        assert call["with"][name] == f"${{{{ inputs.{name} }}}}"
-    assert call["secrets"] == {"GH_TOKEN": "${{ secrets.GH_TOKEN }}"}
-    for name in ("website.yml", "testing.yml", "quality.yml"):
-        assert _workflow_call(name)["secrets"]["GH_TOKEN"]["required"] is False
-
-
-@pytest.mark.parametrize(
-    ("name", "job"),
-    [("quality.yml", "secure"), ("quality.yml", "linting"), ("testing.yml", "testing"), ("testing.yml", "build")],
-)
-def test_jobs_check_out_the_ref(name: str, job: str):
-    steps = _jobs(name)[job]["steps"]
-    checkout = next(step for step in steps if step.get("uses", "").startswith("actions/checkout"))
-    assert checkout["with"]["ref"] == "${{ inputs.ref }}"
-
-
-@pytest.mark.parametrize(
-    ("name", "job"), [("quality.yml", "linting"), ("testing.yml", "testing"), ("testing.yml", "build")]
-)
-def test_pre_build_command_runs_before_installing(name: str, job: str):
-    steps: list[YamlDoc] = _jobs(name)[job]["steps"]
-    names = [step.get("name") for step in steps]
-    assert names.index("Pre-build command") < names.index("Install dependencies")
-    hook = steps[names.index("Pre-build command")]
-    assert hook["if"] == "inputs.pre_build_command != ''"
-    # through the environment, never interpolated into the script
-    assert "${{" not in hook["run"]
-    assert hook["env"] == {
-        "GH_TOKEN": "${{ secrets.GH_TOKEN }}",
-        "PRE_BUILD_COMMAND": "${{ inputs.pre_build_command }}",
-    }
-
-
 def _site_step(name: str) -> YamlDoc:
-    return next(step for step in _jobs("website.yml")["site-checks"]["steps"] if step.get("name") == name)
+    return _step("website.yml", "check", name)
 
 
-def test_site_checks_are_opt_in_and_gate_the_deploy_and_merge():
-    jobs = _jobs("website.yml")
-    assert "inputs.check_links || inputs.check_accessibility" in jobs["site-checks"]["if"]
-    for name in ("deploy", "auto-merge"):
-        # waits for the checks, but still runs when they're skipped
-        assert "site-checks" in jobs[name]["needs"]
-        assert "!failure()" in jobs[name]["if"]
+def test_site_checks_are_opt_in_and_check_the_uploaded_build():
+    check = _jobs("website.yml")["check"]
+    assert check["if"] == "inputs.check_links || inputs.check_accessibility"
+    assert check["needs"] == ["build"]
+    assert _site_step("Download the build")["with"]["name"] == "${{ inputs.artifact_name }}"
 
 
 def test_site_checks_only_check_what_is_asked():
@@ -390,49 +659,158 @@ def test_accessibility_checker_parses(tmp_path: Path):
     subprocess.run(["node", "--check", str(script)], check=True)
 
 
-def _merge_step() -> YamlDoc:
-    return next(s for s in _jobs("merge.yml")["auto-merge"]["steps"] if "createDispatchEvent" in s["with"]["script"])
+# --- version, review requests and merge -----------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "workflow",
-    [
-        workflow_templates.LIBRARY_WORKFLOW,
-        workflow_templates.SERVICE_WORKFLOW,
-        workflow_templates.WEBSITE_WORKFLOW,
-        workflow_templates.DEBIAN_WORKFLOW,
-        (WORKFLOWS_DIR / ".index.yml").read_text(encoding="utf-8"),
-    ],
-    ids=["library", "service", "website", "debian", ".index.yml"],
-)
-def test_auto_merge_dispatch_is_listened_for(workflow: str):
-    """A merge made with GITHUB_TOKEN starts no push run, so merge.yml sends a repository_dispatch instead."""
-    sent = _merge_step()["env"]["DISPATCH_TYPE"]
-    doc: YamlDoc = yaml.safe_load(workflow)
-    on_block: YamlDoc = doc.get(True) or doc.get("on") or {}
-    assert sent
-    assert on_block["repository_dispatch"]["types"] == [sent]
+def _release_job() -> YamlDoc:
+    return cast(YamlDoc, _jobs("version.yml")["release"])
 
 
-def _debian_build_steps() -> list[YamlDoc]:
-    doc = cast(YamlDoc, yaml.safe_load((WORKFLOWS_DIR / "debian.yml").read_text(encoding="utf-8")))
-    return cast(list[YamlDoc], doc["jobs"]["build-deb"]["steps"])
+def test_version_reads_the_working_directory_release_config():
+    """A project in a sub-directory keeps its release-please config in its own .github/."""
+    release = _step("version.yml", "release", "Release")
+    for key, file in (("config-file", "release.json"), ("manifest-file", ".release.json")):
+        assert f"format('{{0}}/.github/{file}', inputs.working_directory)" in release["with"][key]
+
+
+@pytest.mark.parametrize("key", ["release_created", "version", "tag_name"])
+def test_version_reads_the_working_directory_package_outputs(key: str):
+    """release-please prefixes a sub-directory package's outputs with its path."""
+    assert f"format('{{0}}--{key}', inputs.working_directory)" in _release_job()["outputs"][key]
+
+
+def test_version_counts_any_package_release_only_for_the_root_package():
+    """releases_created is true when any package is released, not just this one."""
+    published = _workflow_call("version.yml")["outputs"]["new_release_published"]["value"]
+    before_root_clause, root_clause = published.split("inputs.working_directory == '.' && ", 1)
+    assert "releases_created" not in before_root_clause
+    assert root_clause.startswith("(jobs.release.outputs.releases_created")
+
+
+def test_release_pull_request_requests_a_review():
+    review = _step("version.yml", "release", "Request a review")
+    assert review["if"] == "steps.release.outputs.pr != ''"
+    assert review["env"]["REVIEWERS"] == "${{ inputs.reviewers }}"
+
+
+def test_dependabot_pull_requests_request_a_review_whether_or_not_the_checks_passed():
+    review = _jobs("merge.yml")["review"]
+    assert "checks_passed" not in review["if"]
+    assert "github.event.pull_request.user.login == 'dependabot[bot]'" in review["if"]
+
+
+@pytest.mark.parametrize(("name", "job"), [("version.yml", "release"), ("merge.yml", "review")])
+def test_review_request_never_fails_the_pipeline(name: str, job: str):
+    script = _step(name, job, "Request a review")["with"]["script"]
+    assert "catch (error)" in script
+    assert "core.warning" in script
+
+
+# the author alone would merge someone else's push to Dependabot's branch, and the actor alone
+# a pull request someone else opened that Dependabot then updated
+def test_squash_needs_the_checks_and_dependabot_to_open_the_pull_request_and_make_its_latest_change():
+    gate = str(_jobs("merge.yml")["squash"]["if"])
+    assert gate.startswith("inputs.checks_passed && ")
+    assert "github.event.pull_request.user.login == 'dependabot[bot]' && " in gate
+    assert "github.actor == 'dependabot[bot]' && " in gate
+    assert "!startsWith(github.head_ref, 'dependabot/github_actions/')" in gate
+    assert "||" not in gate
+    assert _workflow_call("merge.yml")["inputs"]["checks_passed"]["default"] is False
+
+
+def test_squash_sends_the_auto_merged_dispatch_once_it_merges():
+    script = next(s for s in _steps("merge.yml", "squash") if "createDispatchEvent" in s["with"]["script"])
+    assert _merge_dispatch_type() == "auto-merged"
+    assert "dispatchOnceMerged" in script["with"]["script"]
+
+
+# --- pages, publish and patch ---------------------------------------------------------------------
+
+
+def test_pages_deploys_one_at_a_time_in_a_group_a_callers_concurrency_cant_share():
+    deploy = _jobs("pages.yml")["deploy"]
+    assert deploy["concurrency"] == {"group": "pages-deploy", "cancel-in-progress": False}
+    assert deploy["permissions"] == {"pages": "write", "id-token": "write"}
+    assert _step("pages.yml", "deploy", "Download the build")["with"]["name"] == "${{ inputs.artifact_name }}"
+
+
+def test_publish_caps_the_package_stage_and_lets_assets_and_attest_take_the_callers_grant():
+    jobs = _jobs("publish.yml")
+    assert jobs["package"]["permissions"] == {"contents": "read", "id-token": "write"}
+    assert "permissions" not in jobs["assets"]
+    assert "permissions" not in jobs["attest"]
+
+
+def test_publish_ships_the_tested_build_without_installing_anything():
+    steps = _steps("publish.yml", "package")
+    assert _step("publish.yml", "package", "Download the build")["with"]["name"] == "${{ inputs.artifact_name }}"
+    assert _step("publish.yml", "package", "Set up uv")["with"]["enable-cache"] is False
+    runs = "\n".join(step.get("run", "") for step in steps)
+    assert "uv publish" in runs
+    assert "uv sync" not in runs
+
+
+def test_publish_attests_what_the_other_stages_shipped_only_when_asked():
+    attest = _jobs("publish.yml")["attest"]
+    assert "inputs.attest" in attest["if"]
+    assert attest["needs"] == ["package", "assets"]
+    assert _workflow_call("publish.yml")["inputs"]["attest"]["default"] is False
+
+
+def test_publish_attaches_assets_only_when_given_an_artifact():
+    assert _jobs("publish.yml")["assets"]["if"] == "inputs.assets != ''"
+    script = _step("publish.yml", "assets", "Upload the assets to the release")["with"]["script"]
+    assert "throw new Error('assets needs tag_name" in script
+
+
+def test_patch_refreshes_forgepys_configs_then_upgrades_vulnerable_packages():
+    names = [step["name"] for step in _steps("patch.yml", "update")]
+    assert names.index("Refresh forgepy's configs") < names.index("Upgrade vulnerable packages")
+    assert _step("patch.yml", "update", "Refresh forgepy's configs")["run"] == "uv run --locked forgepy sync"
+    assert _step("patch.yml", "update", "Commit the patches")["with"]["file_pattern"] == "uv.lock"
+    # resolves from published metadata only, so no package's build code runs in a job that pushes to main
+    assert "uv lock --no-build" in _step("patch.yml", "update", "Upgrade vulnerable packages")["run"]
+    assert _jobs("patch.yml")["update"]["if"] == "github.ref == 'refs/heads/main'"
+
+
+# --- debian and docker ----------------------------------------------------------------------------
+
+
+def test_debian_build_runs_in_the_image_init_checks_python_against():
+    assert _jobs("debian.yml")["build"]["container"] == DEBIAN_IMAGE
+
+
+def _minor(version: str) -> tuple[int, int]:
+    major, minor = version.split(".")[:2]
+    return int(major), int(minor)
+
+
+def test_debian_build_images_python_meets_a_default_debian_projects_requires_python():
+    """The deb is built against the image's python3, so it must satisfy what init writes for a --debian project."""
+    fs = MemoryFileSystem()
+    project = Path("project")
+    assert init(InitConfig(target=project, debian=True), fs) == 0
+    requires = tomllib.loads(fs.read_text(project / "pyproject.toml"))["project"]["requires-python"]
+    floor = re.fullmatch(r">=(\d+\.\d+)(?:\.\d+)?", requires)
+    assert floor is not None
+    assert _minor(floor.group(1)) <= _minor(DEBIAN_PYTHON_VERSION)
+    assert _minor(fs.read_text(project / ".python-version").strip()) <= _minor(DEBIAN_PYTHON_VERSION)
 
 
 def test_debian_build_installs_its_tools_pinned_and_verified():
-    steps = _debian_build_steps()
+    steps = _steps("debian.yml", "build")
     runs = "\n".join(str(step.get("run", "")) for step in steps)
     assert not re.search(r"\|\s*(ba)?sh\b", runs)
     assert "releases/latest" not in runs
     assert any(str(step.get("uses", "")).startswith("astral-sh/setup-uv@v") for step in steps)
-    nfpm = next(step for step in steps if step.get("name") == "Install nfpm")
+    nfpm = _step("debian.yml", "build", "Install nfpm")
     assert re.fullmatch(r"\d+\.\d+\.\d+", nfpm["env"]["NFPM_VERSION"])
     assert re.fullmatch(r"[0-9a-f]{64}", nfpm["env"]["NFPM_SHA256"])
 
 
 @pytest.mark.skipif(shutil.which("sha256sum") is None, reason="needs sha256sum")
 def test_debian_build_refuses_an_nfpm_download_that_fails_its_checksum(tmp_path: Path):
-    nfpm = next(step for step in _debian_build_steps() if step.get("name") == "Install nfpm")
+    nfpm = _step("debian.yml", "build", "Install nfpm")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     installed = tmp_path / "installed"
@@ -452,10 +830,23 @@ def test_debian_build_refuses_an_nfpm_download_that_fails_its_checksum(tmp_path:
     assert not installed.exists()
 
 
-def _secure_steps() -> list[YamlDoc]:
-    doc = cast(YamlDoc, yaml.safe_load((WORKFLOWS_DIR / "quality.yml").read_text(encoding="utf-8")))
-    return cast(list[YamlDoc], doc["jobs"]["secure"]["steps"])
+def test_debian_test_stage_reads_back_the_built_package():
+    test = _jobs("debian.yml")["test"]
+    assert test["needs"] == ["build"]
+    assert _step("debian.yml", "test", "Download the package")["with"]["name"] == "debian-package"
+    assert "dpkg-deb --field" in _step("debian.yml", "test", "Test")["run"]
 
+
+def test_docker_builds_arm64_natively_only_when_asked_and_pushes_only_when_asked():
+    jobs = _jobs("docker.yml")
+    assert jobs["build-arm64"]["runs-on"] == "ubuntu-24.04-arm"
+    assert "inputs.native_arm" in jobs["build-arm64"]["if"]
+    assert "inputs.push" in jobs["push"]["if"]
+    assert jobs["push"]["needs"] == ["build", "build-arm64"]
+    assert _workflow_call("docker.yml")["inputs"]["push"]["default"] is False
+
+
+# --- the OSV gate ---------------------------------------------------------------------------------
 
 # runs the report step's github-script body under Node with a stand-in for its core API
 _OSV_HARNESS = """
@@ -474,7 +865,7 @@ new AsyncFunction('require', 'core', body)(require, core).then(() => console.log
 def _run_osv_report(
     tmp_path: Path, status: int, results: list[YamlDoc] | None, *, enforce: bool
 ) -> dict[str, list[str]]:
-    report = next(step for step in _secure_steps() if step.get("name") == "Report OSV findings")
+    report = _step("library.yml", "scan", "Report OSV findings")
     script = tmp_path / "report.js"
     script.write_text(report["with"]["script"], encoding="utf-8")
     osv_json = tmp_path / "osv.json"
@@ -502,12 +893,13 @@ def _finding(advisory: str, max_severity: str, rating: str | None = None) -> Yam
     }
 
 
-def test_osv_scan_never_swallows_the_result():
-    steps = _secure_steps()
-    scan = next(step for step in steps if step.get("name") == "OSV Scan")
-    report = next(step for step in steps if step.get("name") == "Report OSV findings")
+@pytest.mark.parametrize("name", CHECKS)
+def test_osv_scan_never_swallows_the_result_and_is_the_same_in_every_check_pipeline(name: str):
+    scan = _step(name, "scan", "Scan with OSV")
+    report = _step(name, "scan", "Report OSV findings")
     assert "|| true" not in scan["run"]
     assert report["env"]["OSV_ENFORCE"] == "${{ github.event_name == 'pull_request' }}"
+    assert report == _step("library.yml", "scan", "Report OSV findings")
 
 
 needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the github-script body")
@@ -545,13 +937,3 @@ def test_osv_report_passes_when_there_is_nothing_to_report(
     calls = _run_osv_report(tmp_path, status, results, enforce=True)
     assert calls["setFailed"] == []
     assert bool(calls["warning"]) is warned
-
-
-# the author alone would merge someone else's push to Dependabot's branch, and the actor alone
-# a pull request someone else opened that Dependabot then updated
-def test_auto_merge_needs_dependabot_to_open_the_pull_request_and_make_its_latest_change():
-    doc = cast(YamlDoc, yaml.safe_load((WORKFLOWS_DIR / "merge.yml").read_text(encoding="utf-8")))
-    gate = str(doc["jobs"]["auto-merge"]["if"])
-    assert "github.event.pull_request.user.login == 'dependabot[bot]' && " in gate
-    assert "github.actor == 'dependabot[bot]' && " in gate
-    assert "||" not in gate

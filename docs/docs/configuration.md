@@ -51,7 +51,7 @@ uv run forgepy sync
 
 `uv lock --upgrade-package forgepy` doesn't move past the tag. Dependabot's uv support reads the tagged source, but doesn't yet look up newer tags on a Git remote, so it doesn't propose Forge.py upgrades. Once it does, the generated `uv` entry in `.github/dependabot.yml` will propose them with no change. `forgepy sync` never moves the tag.
 
-`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and the CI quality job all run it, so a stale snapshot fails the checks.
+`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and CI's `lint` stage all run it, so a stale snapshot fails the checks. The weekly `patch` pipeline runs `forgepy sync` on `main` and commits what it refreshes.
 
 ## Quality and testing
 
@@ -163,13 +163,13 @@ With versioning on, `.github/release.json` configures release-please for a Pytho
 - **Backend:** builds the virtual environment with uv on `python:<version>-slim-bookworm` and runs `python -m <package>` as a non-root `app` user. uv is installed with pip, whose wheels cover every platform `python:slim` does. Pass `--build-arg UV_VERSION=<version>` to change its version.
 - **Website:** builds the static site with Zensical once on the build host and serves it with `nginx:stable-alpine` on port 80.
 
-CI builds the image for every configured platform. See [docker.yml](workflows/reference.md#dockeryml) in the job reference.
+CI builds the image for every configured platform. See [docker.yml](workflows/reference.md#dockeryml) in the pipeline reference.
 
 ### nFPM: Debian packaging
 
 `--debian` adds `nfpm.yaml`, a systemd unit (`packaging/<name>.service`), `packaging/postinstall.sh` and `packaging/build_deb.py`. `uv run poe build-deb` builds a relocatable virtual environment against the system Python and packages it as a `.deb` that installs to `/opt/<name>` and depends on `python3` at the minor version the environment was built with (`python3 (>= 3.13), python3 (<< 3.14)` for 3.13), as its packages only run on that version. It needs the `nfpm` CLI on your `PATH`.
 
-CI's `build-deb` job builds on Debian 13 (trixie), whose `python3` is 3.13, so the package installs on trixie. A Debian project must target Python 3.13 or older: `init --debian` refuses a newer `--python`.
+CI's `debian` pipeline builds on Debian 13 (trixie), whose `python3` is 3.13, so the package installs on trixie. A Debian project must target Python 3.13 or older: `init --debian` refuses a newer `--python`.
 
 ## Jython projects
 
@@ -179,12 +179,12 @@ Ruff can't target Python 2, so the checks keep the code within the subset both v
 
 - `ruff.toml` extends `.forgepy/ruff-jython.toml`, a managed base that extends forgepy's usual one and turns off the rules whose fixes need Python 3: `UP` (f-strings, `super()` without arguments and other upgrades), `PTH` (pathlib), `B904` (`raise ... from`), `SIM105` (`contextlib.suppress`), `RUF005`, `RUF012` and `F401`. It targets `py37`, the oldest version Ruff supports, and `ruff.toml` targets the tests at your Python version instead, as they run on CPython. `forgepy sync` refreshes the base in projects that have it. A `select` or `extend-select` in your own `ruff.toml` turns those rules back on, as it comes after the base's `ignore`, so list them in your `ignore` or `per-file-ignores` again if you select more rules.
 - Python 2 code annotates with type comments and imports their names under `if MYPY:`, which Jython never runs. `pyrightconfig.json` defines `MYPY` as true so basedpyright follows those imports, and turns off `reportTypeCommentUsage`. basedpyright stays in strict mode; relax `typeCheckingMode` in your own `pyrightconfig.json` if a platform's stubs need it. It also reports the unused imports that Ruff's `F401` would, since it reads the type comments.
-- The `compat` task runs [vermin](https://github.com/netromdk/vermin) over `src/` and fails on any syntax, module or function Jython 2.7 doesn't have. vermin reads no `pyproject.toml` settings, so its options are in the task; it ignores the `typing` module, as the scripts import it only for type comments. The task then runs `forgepy check-jython src`, which finds a comma after `*args` or `**kwargs`: `ruff format` adds one when it puts each argument on its own line, Python 2 rejects it, and vermin can't see it. Shorten the call or definition so it fits on fewer lines, or keep the formatter off it with `# fmt: off` and `# fmt: on`. The pre-commit hook runs the task when a file under `src/` changes, and CI runs it in the quality job.
+- The `compat` task runs [vermin](https://github.com/netromdk/vermin) over `src/` and fails on any syntax, module or function Jython 2.7 doesn't have. vermin reads no `pyproject.toml` settings, so its options are in the task; it ignores the `typing` module, as the scripts import it only for type comments. The task then runs `forgepy check-jython src`, which finds a comma after `*args` or `**kwargs`: `ruff format` adds one when it puts each argument on its own line, Python 2 rejects it, and vermin can't see it. Shorten the call or definition so it fits on fewer lines, or keep the formatter off it with `# fmt: off` and `# fmt: on`. The pre-commit hook runs the task when a file under `src/` changes, and CI runs it in the `lint` stage.
 - basedpyright checks the scripts as Python 3, so it doesn't know Python 2's builtins. A script that uses `unicode`, `basestring`, `long` or `xrange` needs them declared in a `__builtins__.pyi` at the project root, for example `unicode = str`.
 
 The tests run on CPython 3, so vermin doesn't check them, but Ruff applies the same rules to them as to the scripts.
 
-If the scripts are type-checked against several versions of a platform's stubs, put each version in its own dependency group and pass `sync_args` (for example `--no-default-groups --group dev --group stubs-v2`) to `testing.yml` from a matrix job.
+If the scripts are type-checked against several versions of a platform's stubs, put each version in its own dependency group and pass `sync_args` (for example `--no-default-groups --group dev --group stubs-v2`) to `library.yml` or `service.yml` from a matrix job; see [Checking against several dependency groups](examples.md#checking-against-several-dependency-groups).
 
 ## Python version
 
