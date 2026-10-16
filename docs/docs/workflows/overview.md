@@ -35,7 +35,8 @@ The stages are `lint` (Ruff, basedpyright, `forgepy sync --check` and, in a `--j
 | Event | Pipelines |
 | :--- | :--- |
 | Pull request | The checks (`library`, `service` or `website`, then the `debian` and `docker` builds), then `merge` on Dependabot's |
-| Push to `main`, `auto-merged` dispatch | `version`; on a release, the checks again, then `publish`, `pages` or the `docker` push |
+| Push to `main` | `version`; on a release, the checks again, then `publish`, `pages` or the `docker` push |
+| `auto-merged` dispatch | The same as a push to `main`, and `patch` |
 | Manual run | The same as a push to `main`, and `patch` |
 | Weekly schedule | `patch` |
 
@@ -92,7 +93,7 @@ jobs:
       id-token: write
 
   patch:
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}
     uses: apollogeddon/forgepy/.github/workflows/patch.yml@main
     permissions:
       contents: write

@@ -211,8 +211,14 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
     jobs.append(
         PipelineJob(
             id="patch",
-            comment="weekly or on a manual run, forgepy's configs refreshed and vulnerable packages upgraded on main",
-            condition="github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+            comment=(
+                "weekly, on a manual run and after a Dependabot merge: "
+                "forgepy's configs refreshed and vulnerable packages upgraded on main"
+            ),
+            condition=(
+                "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+                " || github.event_name == 'repository_dispatch'"
+            ),
             pipeline="patch",
             permissions={"contents": "write"},
         )

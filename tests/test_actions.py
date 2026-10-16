@@ -235,7 +235,10 @@ def _merge_dispatch_type() -> str:
 
 
 _CONCURRENCY = {"group": "${{ github.workflow }}-${{ github.head_ref || github.run_id }}", "cancel-in-progress": True}
-_PATCH_EVENTS = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+_PATCH_EVENTS = (
+    "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+    " || github.event_name == 'repository_dispatch'"
+)
 
 
 # --- forgepy's own .index.yml ----------------------------------------------------------------------
@@ -267,13 +270,13 @@ class TestOwnIndex:
     def test_has_the_same_concurrency_as_a_generated_index(self):
         assert self.doc["concurrency"] == _load_text(GENERATED[0][1])["concurrency"] == _CONCURRENCY
 
-    def test_patches_the_tool_and_the_docs_one_after_the_other_on_the_schedule_and_a_manual_run(self):
+    def test_patches_the_tool_and_the_docs_one_after_the_other_on_the_schedule_a_manual_run_and_a_merge(self):
         jobs = self.doc["jobs"]
         assert jobs["patch"]["if"] == _PATCH_EVENTS
         assert _PATCH_EVENTS in jobs["patch-docs"]["if"]
         assert jobs["patch-docs"]["needs"] == "patch"
         assert jobs["patch-docs"]["with"]["working_directory"] == "docs"
-        assert {"schedule", "workflow_dispatch"} <= set(_on(self.doc))
+        assert {"schedule", "workflow_dispatch", "repository_dispatch"} <= set(_on(self.doc))
 
     def test_listens_for_the_merge_pipelines_dispatch(self):
         assert _on(self.doc)["repository_dispatch"]["types"] == [_merge_dispatch_type()]
@@ -301,10 +304,10 @@ class TestGeneratedIndex:
     def test_cancels_only_a_pull_requests_older_run(self, name: str, text: str):  # noqa: ARG002
         assert _load_text(text)["concurrency"] == _CONCURRENCY
 
-    def test_patches_on_the_weekly_schedule_and_a_manual_run(self, name: str, text: str):  # noqa: ARG002
+    def test_patches_on_the_weekly_schedule_a_manual_run_and_a_dependabot_merge(self, name: str, text: str):  # noqa: ARG002
         doc = _load_text(text)
         assert doc["jobs"]["patch"]["if"] == f"${{{{ {_PATCH_EVENTS} }}}}"
-        assert {"schedule", "workflow_dispatch"} <= set(_on(doc))
+        assert {"schedule", "workflow_dispatch", "repository_dispatch"} <= set(_on(doc))
 
     # only PyPI Trusted Publishing and GitHub Pages need an OIDC token
     def test_asks_for_id_token_only_to_publish_or_deploy(self, name: str, text: str):  # noqa: ARG002

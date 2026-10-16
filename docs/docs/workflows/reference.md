@@ -222,7 +222,9 @@ The website Dockerfile builds the static site once on the build host and only th
 
 ## patch.yml
 
-*Managed configs and security patches, weekly and on a manual run.*
+*Managed configs and security patches, weekly, on a manual run and after a Dependabot merge.*
+
+After a Dependabot merge, the `auto-merged` dispatch runs it straight away, so a forgepy bump's refreshed `.forgepy/` lands on `main` without waiting for the week.
 
 1. **`update`**: On `main`, in `working_directory`:
     1. When the project has a `.forgepy/` directory, runs `forgepy sync` and commits any change to it as `chore(deps): refresh the configs forgepy manages`, so a Dependabot bump of forgepy doesn't leave `lint`'s `forgepy sync --check` failing.
@@ -252,7 +254,7 @@ Earlier releases' `library.yml`, `service.yml`, `website.yml` and `debian.yml` e
 | :--- | :--- |
 | `test_on_push`, `test_release_prs` | Gone: the root job's `if` decides (see [Checking a release](#checking-a-release)) |
 | `enable_versioning` | Gone: call `version.yml`, or leave it out |
-| `auto_patch` | Gone: call `patch.yml` from a scheduled or manual run |
+| `auto_patch` | Gone: call `patch.yml` on the schedule, a manual run and the `auto-merged` dispatch |
 | `publish` (`library.yml`) | Gone: call `publish.yml` |
 | `reviewers` | `version.yml`'s and `merge.yml`'s `reviewers` |
 | `auto_merge` (`website.yml`) | Gone: call `merge.yml` once per run |
