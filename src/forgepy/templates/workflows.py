@@ -13,6 +13,9 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  # sent by the auto-merge job, as a merge it makes starts no push run on main
+  repository_dispatch:
+    types: [auto-merged]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -39,6 +42,9 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  # sent by the auto-merge job, as a merge it makes starts no push run on main
+  repository_dispatch:
+    types: [auto-merged]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -64,6 +70,9 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  # sent by the auto-merge job, as a merge it makes starts no push run on main
+  repository_dispatch:
+    types: [auto-merged]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -90,6 +99,9 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  # sent by the auto-merge job, as a merge it makes starts no push run on main
+  repository_dispatch:
+    types: [auto-merged]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
