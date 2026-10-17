@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.1](https://github.com/Apollogeddon/forgepy/compare/v1.0.0...v1.0.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* **deps:** bump the dependencies group with 3 updates ([#67](https://github.com/Apollogeddon/forgepy/issues/67)) ([f556a36](https://github.com/Apollogeddon/forgepy/commit/f556a36b8e1e912db6ae5143f210ad1812a4f719))
+* **deps:** update uv-build requirement from &lt;0.13,&gt;=0.7 to &gt;=0.7,&lt;0.14 ([#68](https://github.com/Apollogeddon/forgepy/issues/68)) ([2ed7ed5](https://github.com/Apollogeddon/forgepy/commit/2ed7ed57751a88ea40a46ee85c8f18ea7b485a7e))
+* **deps:** upgrade packages with known vulnerabilities via osv-scanner ([8e85723](https://github.com/Apollogeddon/forgepy/commit/8e857234525050a72febed992a75af0a524b1193))
+* say in the generated .index.yml that patch also runs after a Dependabot merge ([#70](https://github.com/Apollogeddon/forgepy/issues/70)) ([4318a91](https://github.com/Apollogeddon/forgepy/commit/4318a9163e29cf73ba0a50ba9257fc992862152f))
+
+
+### Documentation
+
+* describe the pipelines and init as they are on main ([#65](https://github.com/Apollogeddon/forgepy/issues/65)) ([460156f](https://github.com/Apollogeddon/forgepy/commit/460156f8018600b978c914bb871f0000644b11ba))
+* say Dependabot doesn't propose forgepy upgrades, and how a project moves to a new tag ([#71](https://github.com/Apollogeddon/forgepy/issues/71)) ([723d895](https://github.com/Apollogeddon/forgepy/commit/723d8951ffb2957b558181ad305cc271e115f5a5))
+
 ## [1.0.0](https://github.com/Apollogeddon/forgepy/compare/v0.9.0...v1.0.0) (2026-10-16)
 
 
