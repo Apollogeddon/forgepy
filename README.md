@@ -75,7 +75,7 @@ It is safe to re-run: existing files and tasks are left alone unless you pass `-
 
 ## Keeping projects up to date
 
-Forge.py itself is installed from Git, pinned in `[tool.uv.sources]` to the release tag that ran `init`. The Ruff and basedpyright base configs are copied into `.forgepy/`, and the project's `ruff.toml` and `pyrightconfig.json` extend them. To pick up a newer Forge.py and its configs, change the tag (`forgepy = { git = "...", tag = "vX.Y.Z" }`), then:
+Forge.py itself is installed from Git, pinned in `[tool.uv.sources]` to the release tag that ran `init`. The Ruff and basedpyright base configs are copied into `.forgepy/`, and the project's `ruff.toml` and `pyrightconfig.json` extend them. Dependabot doesn't propose Forge.py upgrades, as it doesn't look up newer tags on a Git remote. To pick up a newer Forge.py and its configs, change the tag (`forgepy = { git = "...", tag = "vX.Y.Z" }`), then:
 
 ```bash
 uv lock
