@@ -224,10 +224,10 @@ The website Dockerfile builds the static site once on the build host and only th
 
 *Managed configs and security patches, weekly, on a manual run and after a Dependabot merge.*
 
-After a Dependabot merge, the `auto-merged` dispatch runs it straight away, so a forgepy bump's refreshed `.forgepy/` lands on `main` without waiting for the week.
+After a Dependabot merge, the `auto-merged` dispatch runs it straight away on the updated `main`, without waiting for the week. Dependabot doesn't propose Forge.py upgrades: a project moves to a new Forge.py release by changing the tag in `[tool.uv.sources]`, then running `uv lock` and `forgepy sync` (see [Upgrading](../configuration.md#upgrading)).
 
 1. **`update`**: On `main`, in `working_directory`:
-    1. When the project has a `.forgepy/` directory, runs `forgepy sync` and commits any change to it as `chore(deps): refresh the configs forgepy manages`, so a Dependabot bump of forgepy doesn't leave `lint`'s `forgepy sync --check` failing.
+    1. When the project has a `.forgepy/` directory, runs `forgepy sync` and commits any change to it as `chore(deps): refresh the configs forgepy manages`, so a project moved to a new tag without `forgepy sync`, or with `.forgepy/` edited by hand, doesn't leave `lint`'s `forgepy sync --check` failing. It never moves the tag.
     2. Scans `uv.lock` with OSV-Scanner, upgrades only the vulnerable packages with `uv lock --upgrade-package` (transitive ones included, within the ranges `pyproject.toml` allows, without building any package), and commits the new `uv.lock` as `fix(deps): upgrade packages with known vulnerabilities via osv-scanner`. OSV-Scanner can't fix a `uv.lock` in place, so uv does the upgrade.
 
 It checks out the tip of `main`, so a second call in the same run (forgepy patches its docs site after the tool) commits on top of the first. The commits are made with `GITHUB_TOKEN`, so they start no run of their own: release-please picks them up on the next push to `main`.

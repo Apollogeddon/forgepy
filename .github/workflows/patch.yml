@@ -40,7 +40,7 @@ jobs:
         with:
           # no dependency cache in a job that pushes to main
           enable-cache: false
-      # a Dependabot bump of forgepy leaves the configs it manages for this job to refresh
+      # a project moved to a new forgepy tag without running sync gets the configs it manages refreshed here
       - name: Refresh forgepy's configs
         if: hashFiles(format('{0}/.forgepy/**', inputs.working_directory)) != ''
         run: uv run --locked forgepy sync
