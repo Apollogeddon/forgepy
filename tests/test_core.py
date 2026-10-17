@@ -418,7 +418,7 @@ def test_init_generates_least_privilege_ci_that_never_cancels_main(cfg: InitConf
         # only PyPI Trusted Publishing and GitHub Pages need an OIDC token
         if name not in ("publish", "pages"):
             assert "id-token" not in job["permissions"], f"{name} asks for id-token"
-    # vulnerable packages are upgraded on main, weekly and on a manual run
+    # vulnerable packages are upgraded on main, weekly, on a manual run and after a Dependabot merge
     assert workflow["jobs"]["patch"]["uses"] == f"{FORGEPY}/patch.yml@main"
 
 
