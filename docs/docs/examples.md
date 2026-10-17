@@ -125,11 +125,11 @@ In a repository with several projects, a second call to the same pipeline names 
 }
 ```
 
-release-please then only counts commits under `services/api`, bumps the version in its `pyproject.toml` and `uv.lock`, and tags its releases with the component (`api-v1.2.3`), so several projects in one repository are each released on their own.
+release-please then only counts commits under `services/api`, bumps the version in its `pyproject.toml` and `uv.lock`, and tags its releases with the component (`api-vX.Y.Z`), so several projects in one repository are each released on their own.
 
 ### Checking against several dependency groups
 
-Call a check pipeline from a matrix to run its stages once per leg, such as scripts type-checked against each version of a platform's API stubs, each in its own uv dependency group. Keep the job's id the pipeline's name and name each leg in brackets, so the run page reads `library (8.1) / test`:
+Call a check pipeline from a matrix to run its stages once per leg, such as scripts type-checked against each version of a platform's API stubs, each in its own uv dependency group. Keep the job's id the pipeline's name and name each leg in brackets, so the run page reads `library (current) / test`:
 
 ```yaml
 jobs:
@@ -138,10 +138,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - api: "8.1"
-            group: ignition81
-          - api: "8.3"
-            group: ignition83
+          - api: current
+            group: stubs-current
+          - api: next
+            group: stubs-next
     uses: apollogeddon/forgepy/.github/workflows/library.yml@main
     with:
       working_directory: projects

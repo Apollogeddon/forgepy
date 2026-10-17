@@ -40,7 +40,7 @@ The three share their first four stages, job for job:
 | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | Runner label for every job |
 | `working_directory` | `'.'` | Directory holding `pyproject.toml` |
-| `python_version` | `''` | Python version for every job. Empty reads the project's `.python-version`, and without one uses Python 3.13; see [Python version](../configuration.md#python-version) |
+| `python_version` | `''` | Python version for every job. Empty reads the project's `.python-version`, and without one uses Forge.py's default; see [Python version](../configuration.md#python-version) |
 | `enable_secrets` | `true` | Run the Gitleaks secret scan |
 | `run_tests` | `true` | Run the test stage; `init --no-testing` sets it to `false` |
 | `run_build` | `true` | Run the build stage; `init --jython` sets it to `false`. Not in `website.yml` |
@@ -184,7 +184,7 @@ Outputs `published` (`'true'` when this run published the package).
 
 *Debian packaging.*
 
-1. **`build`**: Builds inside a `debian:trixie-slim` container, so the virtual environment targets the system `python3` (3.13) the `.deb` depends on, rather than a GitHub-hosted Python at a path no `.deb` dependency can promise. It installs uv with `astral-sh/setup-uv`, as every other job does, and nFPM from a pinned release checked against its SHA-256, runs `packaging/build_deb.py`, and uploads the `.deb` as the `debian-package` artifact.
+1. **`build`**: Builds inside a `debian:trixie-slim` container, so the virtual environment targets the system `python3` the `.deb` depends on, rather than a GitHub-hosted Python at a path no `.deb` dependency can promise. It installs uv with `astral-sh/setup-uv`, as every other job does, and nFPM from a pinned release checked against its SHA-256, runs `packaging/build_deb.py`, and uploads the `.deb` as the `debian-package` artifact.
 2. **`test`**: Reads the `.deb` back with `dpkg-deb`: its control fields and file list, so a broken package fails before it ships. *(Needs: build)*
 
 `forgepy init --debian` runs it after `service.yml`'s checks on pull requests and on a release, and on a release attaches the `.deb` to the GitHub release through `publish.yml`'s `assets`. It takes `working_directory` and `runs_on` (for `test`; `build` is a container job on `ubuntu-latest`), and outputs `package_artifact`, the artifact's name.
@@ -245,27 +245,3 @@ The generated `merge` job passes `checks_passed` as whether every check job befo
 | :--- | :--- | :--- |
 | `reviewers` | `''` | Comma-separated logins to request a review from; empty means the repository's owner |
 | `checks_passed` | `false` | Whether the pull request's checks passed in this run; `squash` only runs when they did |
-
-## Inputs that moved
-
-Earlier releases' `library.yml`, `service.yml`, `website.yml` and `debian.yml` each ran a whole pipeline: checks, review requests, the Dependabot merge, release-please, security patches and delivery. Each is now one part, and `.index.yml` decides when each part runs, so a hand-written caller moves these inputs:
-
-| Old input | Now |
-| :--- | :--- |
-| `test_on_push`, `test_release_prs` | Gone: the root job's `if` decides (see [Checking a release](#checking-a-release)) |
-| `enable_versioning` | Gone: call `version.yml`, or leave it out |
-| `auto_patch` | Gone: call `patch.yml` on the schedule, a manual run and the `auto-merged` dispatch |
-| `publish` (`library.yml`) | Gone: call `publish.yml` |
-| `reviewers` | `version.yml`'s and `merge.yml`'s `reviewers` |
-| `auto_merge` (`website.yml`) | Gone: call `merge.yml` once per run |
-| `run_tests`, `enable_secrets`, `python_version`, `working_directory`, `artifact_name`, `runs_on` | Unchanged, on the check pipelines |
-| `run_build`, `sync_args` | Unchanged on `service.yml`, and now on `library.yml` too |
-| `build_command` | Unchanged on `website.yml`, and now on `library.yml` and `service.yml` too |
-| `ref`, `pre_build_command`, `GH_TOKEN` | Unchanged on `website.yml`, and now on `library.yml` and `service.yml` too |
-| `debian.yml`'s check inputs | Pass them to `service.yml`; `debian.yml` takes `working_directory` and `runs_on` |
-
-| Old output | Now |
-| :--- | :--- |
-| `new_release_published`, `version`, `tag_name` (`service.yml`, `website.yml`, `debian.yml`) | `version.yml`'s |
-
-`testing.yml`, `quality.yml` and `review.yml` are gone: their jobs are the check pipelines' stages, `patch.yml`'s `update`, and `merge.yml`'s and `version.yml`'s review requests. A caller of `testing.yml`, such as a matrix over dependency groups, calls `library.yml` or `service.yml` with the same inputs, less `auto_patch`; see [Checking against several dependency groups](../examples.md#checking-against-several-dependency-groups).

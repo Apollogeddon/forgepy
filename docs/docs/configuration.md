@@ -21,16 +21,16 @@ The Ruff and basedpyright base configs live in `.forgepy/` inside your project. 
 
 ## Dependencies
 
-`init` adds `forgepy[toolchain]` to the `dev` dependency group in `pyproject.toml`. The `toolchain` extra brings in Ruff, basedpyright, pytest, pytest-cov, Poe the Poet, pre-commit, Commitizen, watchdog and validate-pyproject, with minimum versions only; your `uv.lock` pins the exact versions. Websites also get Zensical, and `--jython` projects get vermin.
+`init` adds `forgepy[toolchain]` to the `dev` dependency group in `pyproject.toml`.
 
 As Forge.py isn't on PyPI, `init` also adds a `[tool.uv.sources]` entry that installs it from Git, pinned to the tag of the release that ran `init`:
 
 ```toml
 [tool.uv.sources]
-forgepy = { git = "https://github.com/apollogeddon/forgepy", tag = "v0.7.0" }
+forgepy = { git = "https://github.com/apollogeddon/forgepy", tag = "vX.Y.Z" }
 ```
 
-The tag keeps `uv.lock` on that release, so an unrelated `uv lock --upgrade` doesn't move the project to whatever is on Forge.py's `main`. A build of Forge.py that isn't a release (a version such as `0.8.0.dev1`) writes the source without a tag and warns; add the tag yourself. Between releases, Forge.py's `main` carries the last release's version, so installing from `main` pins that release.
+The tag keeps `uv.lock` on that release, so an unrelated `uv lock --upgrade` doesn't move the project to whatever is on Forge.py's `main`. A build of Forge.py that isn't a release (a development version) writes the source without a tag and warns; add the tag yourself. Between releases, Forge.py's `main` carries the last release's version, so installing from `main` pins that release.
 
 Re-running `init` adds the tag to an untagged source, and replaces an existing tag only with `--force`. Any other `forgepy` source, such as a local path, a fork, a `branch` or a `rev`, is never replaced, even with `--force`.
 
@@ -40,7 +40,7 @@ Forge.py is upgraded by hand: change the tag, then lock, sync and refresh the ma
 
 ```toml
 [tool.uv.sources]
-forgepy = { git = "https://github.com/apollogeddon/forgepy", tag = "v0.8.0" }
+forgepy = { git = "https://github.com/apollogeddon/forgepy", tag = "vX.Y.Z" }
 ```
 
 ```bash
@@ -49,9 +49,9 @@ uv sync
 uv run forgepy sync
 ```
 
-`uv lock --upgrade-package forgepy` doesn't move past the tag. Dependabot's uv support reads the tagged source, but doesn't yet look up newer tags on a Git remote, so it doesn't propose Forge.py upgrades. Once it does, the generated `uv` entry in `.github/dependabot.yml` will propose them with no change. `forgepy sync` never moves the tag.
+`uv lock --upgrade-package forgepy` doesn't move past the tag. Dependabot doesn't look up newer tags on a Git remote, so it doesn't propose Forge.py upgrades. `forgepy sync` never moves the tag.
 
-`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and CI's `lint` stage all run it, so a stale snapshot fails the checks. The weekly `patch` pipeline runs `forgepy sync` on `main` and commits what it refreshes.
+`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and CI's `lint` stage all run it, so a stale snapshot fails the checks. The `patch` pipeline, weekly, on a manual run and after a Dependabot merge, runs `forgepy sync` on `main` and commits what it refreshes.
 
 ## Quality and testing
 
@@ -167,9 +167,9 @@ CI builds the image for every configured platform. See [docker.yml](workflows/re
 
 ### nFPM: Debian packaging
 
-`--debian` adds `nfpm.yaml`, a systemd unit (`packaging/<name>.service`), `packaging/postinstall.sh` and `packaging/build_deb.py`. `uv run poe build-deb` builds a relocatable virtual environment against the system Python and packages it as a `.deb` that installs to `/opt/<name>` and depends on `python3` at the minor version the environment was built with (`python3 (>= 3.13), python3 (<< 3.14)` for 3.13), as its packages only run on that version. It needs the `nfpm` CLI on your `PATH`.
+`--debian` adds `nfpm.yaml`, a systemd unit (`packaging/<name>.service`), `packaging/postinstall.sh` and `packaging/build_deb.py`. `uv run poe build-deb` builds a relocatable virtual environment against the system Python and packages it as a `.deb` that installs to `/opt/<name>` and depends on `python3` at the minor version the environment was built with, as its packages only run on that version. It needs the `nfpm` CLI on your `PATH`.
 
-CI's `debian` pipeline builds on Debian 13 (trixie), whose `python3` is 3.13, so the package installs on trixie. A Debian project must target Python 3.13 or older: `init --debian` refuses a newer `--python`.
+CI's `debian` pipeline builds on Debian trixie and its `python3`, so the package installs on trixie. A Debian project must target that Python or older: `init --debian` refuses a newer `--python`.
 
 ## Jython projects
 
@@ -184,17 +184,17 @@ Ruff can't target Python 2, so the checks keep the code within the subset both v
 
 The tests run on CPython 3, so vermin doesn't check them, but Ruff applies the same rules to them as to the scripts.
 
-If the scripts are type-checked against several versions of a platform's stubs, put each version in its own dependency group and pass `sync_args` (for example `--no-default-groups --group dev --group stubs-v2`) to `library.yml` or `service.yml` from a matrix job; see [Checking against several dependency groups](examples.md#checking-against-several-dependency-groups).
+If the scripts are type-checked against several versions of a platform's stubs, put each version in its own dependency group and pass `sync_args` (for example `--no-default-groups --group dev --group stubs-next`) to `library.yml` or `service.yml` from a matrix job; see [Checking against several dependency groups](examples.md#checking-against-several-dependency-groups).
 
 ## Python version
 
-A project's Python version lives in `.python-version`, which uv and `actions/setup-python` both read. `init` targets the version passed to `--python`; without one, it keeps the project's own: its `.python-version`, else the lower bound of `requires-python` in `pyproject.toml`, else `3.13`. That version goes into a new `.python-version` and `requires-python`, Ruff's target version and the Dockerfile.
+A project's Python version lives in `.python-version`, which uv and `actions/setup-python` both read. `init` targets the version passed to `--python`; without one, it keeps the project's own: its `.python-version`, else the lower bound of `requires-python` in `pyproject.toml`, else Forge.py's default. That version goes into a new `.python-version` and `requires-python`, Ruff's target version and the Dockerfile.
 
 Every workflow job that sets up Python picks the version in this order:
 
 1. The `python_version` input, when the caller sets one.
 2. The project's `.python-version`.
-3. Python 3.13, forgepy's default, when the project has neither.
+3. Forge.py's default, when the project has neither.
 
 So moving a project to another version is one edit to `.python-version`, with `requires-python` and Ruff's target version to match.
 
@@ -206,7 +206,7 @@ So moving a project to another version is one edit to `.python-version`, with `r
 | :--- | :--- |
 | `.gitignore` | Ignores what uv, the generated tasks and the `.deb` build write: `.venv/`, `__pycache__/`, `dist/`, test and coverage reports, tool caches and `*.deb` |
 | `.editorconfig` | LF line endings, UTF-8 and 120 columns, with 4-space Python and 2-space everything else, matching the Ruff config |
-| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The workflow's auto-merge job merges them once CI passes. |
+| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The `merge` pipeline requests your review on them and squash-merges them once CI passes. |
 | `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |
 
 The `CODEOWNERS` owner is the GitHub account in a `[project.urls]` entry of `pyproject.toml` or, failing that, the `origin` remote. A project with neither gets no `CODEOWNERS`; run `init` again once it has a GitHub remote.
