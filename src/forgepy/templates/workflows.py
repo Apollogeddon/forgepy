@@ -6,7 +6,8 @@ from typing import Literal
 
 # The generated .github/workflows/.index.yml: each job calls one forgepy pipeline, so a run page reads
 # <pipeline> / <stage>. Pull requests run the checks, main runs release-please and, on a release, the checks
-# again before shipping, and a weekly run patches vulnerable dependencies.
+# again before shipping, and patch upgrades vulnerable dependencies weekly, on a manual run and after a
+# Dependabot merge.
 
 PipelineMode = Literal["library", "service", "website"]
 
@@ -25,7 +26,7 @@ on:
   # sent by the merge pipeline, as a merge it makes starts no push run on main
   repository_dispatch:
     types: [auto-merged]
-  # weekly, for the patch pipeline; a manual run patches too
+  # weekly, for the patch pipeline, which a manual run and a Dependabot merge start too
   schedule:
     - cron: '17 3 * * 1'
 
