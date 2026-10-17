@@ -27,10 +27,10 @@ As Forge.py isn't on PyPI, `init` also adds a `[tool.uv.sources]` entry that ins
 
 ```toml
 [tool.uv.sources]
-forgepy = { git = "https://github.com/apollogeddon/forgepy", tag = "v0.7.0" }
+forgepy = { git = "https://github.com/apollogeddon/forgepy", tag = "v1.0.0" }
 ```
 
-The tag keeps `uv.lock` on that release, so an unrelated `uv lock --upgrade` doesn't move the project to whatever is on Forge.py's `main`. A build of Forge.py that isn't a release (a version such as `0.8.0.dev1`) writes the source without a tag and warns; add the tag yourself. Between releases, Forge.py's `main` carries the last release's version, so installing from `main` pins that release.
+The tag keeps `uv.lock` on that release, so an unrelated `uv lock --upgrade` doesn't move the project to whatever is on Forge.py's `main`. A build of Forge.py that isn't a release (a version such as `1.0.1.dev1`) writes the source without a tag and warns; add the tag yourself. Between releases, Forge.py's `main` carries the last release's version, so installing from `main` pins that release.
 
 Re-running `init` adds the tag to an untagged source, and replaces an existing tag only with `--force`. Any other `forgepy` source, such as a local path, a fork, a `branch` or a `rev`, is never replaced, even with `--force`.
 
@@ -40,7 +40,7 @@ Forge.py is upgraded by hand: change the tag, then lock, sync and refresh the ma
 
 ```toml
 [tool.uv.sources]
-forgepy = { git = "https://github.com/apollogeddon/forgepy", tag = "v0.8.0" }
+forgepy = { git = "https://github.com/apollogeddon/forgepy", tag = "v1.0.0" }
 ```
 
 ```bash
@@ -51,7 +51,7 @@ uv run forgepy sync
 
 `uv lock --upgrade-package forgepy` doesn't move past the tag. Dependabot's uv support reads the tagged source, but doesn't yet look up newer tags on a Git remote, so it doesn't propose Forge.py upgrades. Once it does, the generated `uv` entry in `.github/dependabot.yml` will propose them with no change. `forgepy sync` never moves the tag.
 
-`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and CI's `lint` stage all run it, so a stale snapshot fails the checks. The weekly `patch` pipeline runs `forgepy sync` on `main` and commits what it refreshes.
+`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and CI's `lint` stage all run it, so a stale snapshot fails the checks. The `patch` pipeline, weekly, on a manual run and after a Dependabot merge, runs `forgepy sync` on `main` and commits what it refreshes.
 
 ## Quality and testing
 
@@ -206,7 +206,7 @@ So moving a project to another version is one edit to `.python-version`, with `r
 | :--- | :--- |
 | `.gitignore` | Ignores what uv, the generated tasks and the `.deb` build write: `.venv/`, `__pycache__/`, `dist/`, test and coverage reports, tool caches and `*.deb` |
 | `.editorconfig` | LF line endings, UTF-8 and 120 columns, with 4-space Python and 2-space everything else, matching the Ruff config |
-| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The workflow's auto-merge job merges them once CI passes. |
+| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The `merge` pipeline requests your review on them and squash-merges them once CI passes. |
 | `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |
 
 The `CODEOWNERS` owner is the GitHub account in a `[project.urls]` entry of `pyproject.toml` or, failing that, the `origin` remote. A project with neither gets no `CODEOWNERS`; run `init` again once it has a GitHub remote.
