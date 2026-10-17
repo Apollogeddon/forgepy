@@ -8,7 +8,7 @@ hide:
 
 <div class="fp-hero" markdown>
 
-<span class="fp-badge">Python 3.13 · uv · forgepy</span>
+<span class="fp-badge">Python · uv · forgepy</span>
 
 # Quality tooling,<br>zero configuration drift.
 

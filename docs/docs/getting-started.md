@@ -10,7 +10,7 @@ This page shows you how to install Forge.py, scaffold a project with `forgepy in
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/). Forge.py generates uv-managed projects, and every task runs through `uv run`.
-- Python 3.13, the version you pass to `--python`, or the one your project already pins. uv can install it for you.
+- Python: the version you pass to `--python`, the one your project already pins, or Forge.py's default. uv can install it for you.
 - Git, for the pre-commit hooks.
 
 Some optional tasks call tools that uv doesn't install. Put them on your `PATH` if you use those tasks:
@@ -118,12 +118,12 @@ forgepy --version
 | `--jython` | Scripts that run on Jython 2.7: no packaging, lint rules that keep Python 2 syntax, and a vermin compatibility check. `--backend` only; needs linting, and can't be combined with `--docker` or `--debian`. See [Jython projects](configuration.md#jython-projects). |
 | `--force` | Overwrite existing config files and tasks, and remove the files of features you turned off. |
 | `--dry-run` | Show what would change without writing anything. |
-| `--python VERSION` | Target Python version, from 3.10 up, as `3.13` or `3.13.1` (default: the project's `.python-version`, else the lower bound of its `requires-python`, else `3.13`). With `--debian`, 3.13 or older. |
+| `--python VERSION` | Target Python version, a minor or a patch release (default: the project's `.python-version`, else the lower bound of its `requires-python`, else Forge.py's default). With `--debian`, no newer than Debian's own `python3`. |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
 `--website` scaffolds a static documentation site built with Zensical: `mkdocs.yml`, which Zensical reads as its configuration, and `docs/index.md`. There is no Python package. `uv run poe dev` serves the site locally with live reload, and `uv run poe build` writes it to `dist/`. In CI, the `website` pipeline builds the site and `pages` deploys `dist/` to GitHub Pages. The `website` pipeline can also check the built site's links and accessibility, and run a command that generates content before the build; see [Site checks](workflows/reference.md#site-checks).
 
-`--no-testing`, `--no-versioning` and `--jython` also turn off the matching jobs and stages in the generated `.github/workflows/.index.yml`; see [Generated workflow](workflows/overview.md#generated-workflow). Re-running `init` in a project an earlier release set up removes the `index.yml` it generated; see [Upgrading from `index.yml`](workflows/overview.md#upgrading-from-indexyml).
+`--no-testing`, `--no-versioning` and `--jython` also turn off the matching jobs and stages in the generated `.github/workflows/.index.yml`; see [Generated workflow](workflows/overview.md#generated-workflow). If `.github/workflows/index.yml` calls forgepy's pipelines, `init` removes it; see [An existing `index.yml`](workflows/overview.md#an-existing-indexyml).
 
 Options that can't be combined, or a `--python` (or a project's own pin) that isn't a Python version forgepy can target, exit with status `2` without writing anything.
 

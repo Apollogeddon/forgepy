@@ -11,7 +11,7 @@ Forge.py ships reusable GitHub Actions pipelines that give every project the sam
 
 A root job calls a pipeline, and a pipeline's jobs are its stages, so a run page lists every job as `<pipeline> / <stage>`: `library / lint`, `version / release`, `pages / deploy`. No pipeline calls another, so there's never a third level. A pipeline an event doesn't need, such as `publish` on a pull request, shows as one skipped row.
 
-A root job's id is the pipeline's name. A second call to the same pipeline, or each leg of a matrix, names its variant in brackets, such as forgepy's own `patch (docs)` or `library (8.1)`; see [Checking against several dependency groups](../examples.md#checking-against-several-dependency-groups).
+A root job's id is the pipeline's name. A second call to the same pipeline, or each leg of a matrix, names its variant in brackets, such as forgepy's own `patch (docs)` or `library (current)`; see [Checking against several dependency groups](../examples.md#checking-against-several-dependency-groups).
 
 ## Pipelines
 
@@ -126,11 +126,11 @@ The other modes differ only in their jobs:
 
 The Python version isn't in `.index.yml`: every stage reads the project's `.python-version`; see [Python version](../configuration.md#python-version).
 
-### Upgrading from `index.yml`
+### An existing `index.yml`
 
-Earlier releases generated `.github/workflows/index.yml`, which called `library.yml`, `service.yml`, `website.yml` or `debian.yml` as one job. Once `init` has written `.index.yml`, it removes such a file when it's exactly as an earlier release generated it, ignoring line endings, trailing spaces and blank lines. One you've changed since, say to set `runs_on` or an older release's `--python`, is kept with a warning until you run `init --force`: move your changes to `.index.yml` first. An `index.yml` that calls none of forgepy's workflows is your own and is never removed; check it doesn't repeat `.index.yml`'s jobs. Nothing is removed when `init` kept an existing `.index.yml`. See [Inputs that moved](reference.md#inputs-that-moved) for a hand-written caller.
+If `.github/workflows/index.yml` calls forgepy's pipelines, `init` removes it once it has written `.index.yml`, so the same checks don't run twice. It removes the file only when it's exactly as `init` generated it, ignoring line endings, trailing spaces and blank lines. One you've changed, say to set `runs_on` or `python_version`, is kept with a warning until you run `init --force`: move your changes to `.index.yml` first. A workflow that calls none of forgepy's pipelines is your own and is never removed; check it doesn't repeat `.index.yml`'s jobs. Nothing is removed when `init` kept an existing `.index.yml`.
 
-A library's PyPI trusted publisher names the workflow file that publishes, so once `.index.yml` replaces `index.yml`, change the workflow name on your PyPI project's **Publishing** page to `.index.yml`.
+A library's PyPI trusted publisher names the workflow file that publishes, so it must name `.index.yml`.
 
 ## Secrets
 

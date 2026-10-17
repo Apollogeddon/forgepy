@@ -22,12 +22,12 @@
 
 <br />
 
-Forge.py (`forgepy`) is a project-scaffolding CLI for Python. Its `init` command sets up a uv-managed backend, library or website with a standard toolchain (Ruff, basedpyright, pytest, pre-commit, Commitizen, release-please) and a GitHub Actions pipeline built from reusable workflows. It keeps your Ruff, basedpyright and pytest setup in one place: the generated configs extend a shared base that `forgepy sync` keeps current, so every project stays on the same rules.
+Forge.py (`forgepy`) is a project-scaffolding CLI for Python. Its `init` command sets up a uv-managed backend, library or website with a standard toolchain and a GitHub Actions pipeline built from reusable workflows. It keeps your lint, type-check and test setup in one place: the generated configs extend a shared base that `forgepy sync` keeps current, so every project stays on the same rules.
 
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/): Forge.py generates uv-managed projects, and every task runs through `uv run`
-- Python 3.13, the version you pass to `--python`, or the one your project already pins; uv can install it for you
+- Python: the version you pass to `--python`, the one your project already pins, or Forge.py's default; uv can install it for you
 - Git, for the generated pre-commit hooks
 
 ## Installation
@@ -73,26 +73,7 @@ Add `--jython` to a backend for scripts that run on Jython 2.7, or `--docker` an
 
 It is safe to re-run: existing files and tasks are left alone unless you pass `--force`, and your own source code is never overwritten.
 
-## The toolchain
-
-| Category | Tool |
-| :--- | :--- |
-| Linting and formatting | [Ruff](https://docs.astral.sh/ruff/) |
-| Type checking | [basedpyright](https://docs.basedpyright.com/) |
-| Testing | [pytest](https://docs.pytest.org/) with pytest-cov |
-| Tasks | [Poe the Poet](https://poethepoet.natn.io/) |
-| Git hooks | [pre-commit](https://pre-commit.com/) |
-| Commit messages | [Commitizen](https://commitizen-tools.github.io/commitizen/) |
-| Releases | [release-please](https://github.com/googleapis/release-please) |
-| Security scanning (CI) | [Gitleaks](https://github.com/gitleaks/gitleaks) and [OSV-Scanner](https://google.github.io/osv-scanner/) |
-| CI/CD | Reusable [GitHub Actions](https://docs.github.com/actions) workflows |
-| Containers (`--docker`) | Multi-platform images built with Docker Buildx and pushed to GHCR on release |
-| Debian packages (`--debian`) | [nFPM](https://nfpm.goreleaser.com/) |
-| Website checks (CI, opt-in) | [lychee](https://lychee.cli.rs/) for links and [axe](https://github.com/dequelabs/axe-core) for accessibility |
-
 ## Keeping projects up to date
-
-A generated project depends on `forgepy[toolchain]` as a dev dependency, which sets minimum versions for the tools. The project's own `uv.lock` pins the exact versions.
 
 Forge.py itself is installed from Git, pinned in `[tool.uv.sources]` to the release tag that ran `init`. The Ruff and basedpyright base configs are copied into `.forgepy/`, and the project's `ruff.toml` and `pyrightconfig.json` extend them. To pick up a newer Forge.py and its configs, change the tag (`forgepy = { git = "...", tag = "vX.Y.Z" }`), then:
 
