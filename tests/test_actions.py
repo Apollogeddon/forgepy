@@ -695,13 +695,19 @@ def test_python_version_input_defaults_to_empty(name: str):
 def test_check_pipelines_test_on_more_platforms_and_versions_only_when_asked(name: str, key: str):
     assert _workflow_call(name)["inputs"][key]["default"] == ""
     job = _jobs(name)[key.replace("_", "-")]
-    assert job["if"] == f"inputs.run_tests && inputs.{key} != ''"
+    if key == "test_versions":
+        assert job["if"] == f"inputs.run_tests && inputs.{key} != ''"
+    else:
+        assert job["if"] == f"inputs.{key} != '' && (inputs.run_tests || inputs.run_build)"
     assert job["needs"] == ["lint", "scan"]
-    # the tests only: the Linux stage reports the coverage
-    assert [step["run"] for step in job["steps"] if step["name"] == "Test"] == [
-        ".venv/bin/python -m pytest" if key == "test_versions" else "uv run pytest"
-    ]
-    assert not any("upload-artifact" in step.get("uses", "") for step in job["steps"])
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+def test_versions_stage_runs_the_tests_only(name: str):
+    steps = _jobs(name)["test-versions"]["steps"]
+    # the tests only: the Linux stage reports the coverage, and the build stage builds
+    assert [step["run"] for step in steps if step["name"] == "Test"] == [".venv/bin/python -m pytest"]
+    assert not any("upload-artifact" in step.get("uses", "") for step in steps)
 
 
 @pytest.mark.parametrize("name", ["library.yml", "service.yml"])
@@ -709,8 +715,52 @@ def test_check_pipelines_test_on_more_platforms_and_versions_only_when_asked(nam
 def test_platform_stages_take_a_runner_label_or_one_with_an_environment(name: str, os_name: str, default: str):
     job = _jobs(name)[f"test-{os_name}"]
     key = f"inputs.test_{os_name}"
+    assert job["name"] == f"test ({os_name})"
     assert job["runs-on"] == f"${{{{ startsWith({key}, '{{') && (fromJSON({key}).runs_on || '{default}') || {key} }}}}"
     assert job["defaults"]["run"]["shell"] == "bash"
+    env = next(step for step in job["steps"] if step["name"] == "Set the runner's environment")
+    assert env["if"] == f"startsWith({key}, '{{')"
+    assert env["env"] == {"TARGET": f"${{{{ {key} }}}}"}
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+@pytest.mark.parametrize("os_name", ["windows", "macos"])
+def test_platform_stages_set_up_test_with_the_shorter_suite_and_build(name: str, os_name: str):
+    steps = _jobs(name)[f"test-{os_name}"]["steps"]
+    names = [step["name"] for step in steps]
+    order = ["Set the runner's environment", "Run the setup script", "Install dependencies", "Test", "Build"]
+    assert [n for n in names if n in order] == order
+    by_name = {step["name"]: step for step in steps}
+    # a path relative to working_directory, through env rather than into the script
+    setup = by_name["Run the setup script"]
+    assert setup["if"] == "inputs.setup_script != ''"
+    assert setup["env"]["SCRIPT"] == "${{ inputs.setup_script }}"
+    assert setup["run"] == 'bash "$SCRIPT"'
+    test = by_name["Test"]
+    assert test["if"] == "inputs.run_tests"
+    assert test["env"] == {"TASK": "${{ inputs.extra_test_task }}"}
+    assert test["run"] == 'uv run poe "$TASK"'
+    assert by_name["Build"]["if"] == "inputs.run_build"
+    assert by_name["Build"]["run"] == _step(name, "build", "Build")["run"]
+    upload = next(step for step in steps if "upload-artifact" in step.get("uses", ""))
+    assert upload["with"] == {
+        "name": f"${{{{ inputs.artifact_name }}}}-{os_name}",
+        "path": "${{ inputs.working_directory }}/dist",
+        "if-no-files-found": "ignore",
+    }
+    inputs = _workflow_call(name)["inputs"]
+    assert inputs["extra_test_task"]["default"] == "test"
+    assert inputs["setup_script"]["default"] == ""
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="needs jq")
+def test_platform_stage_sets_the_runner_environment_from_the_json_form(tmp_path: Path):
+    step = _step("library.yml", "test-windows", "Set the runner's environment")
+    github_env = tmp_path / "env"
+    target = '{"runs_on": "windows-latest", "env": {"CGO_ENABLED": "0", "GREETING": "hello world"}}'
+    env = {**os.environ, "TARGET": target, "GITHUB_ENV": str(github_env)}
+    _run_step(step["run"], env=env, check=True)
+    assert github_env.read_text(encoding="utf-8").splitlines() == ["CGO_ENABLED=0", "GREETING=hello world"]
 
 
 @pytest.mark.parametrize("name", ["library.yml", "service.yml"])
