@@ -46,5 +46,7 @@ updates:
           - "*"
     commit-message:
       prefix: "chore(ci)"
+    ignore:
+      - dependency-name: "apollogeddon/forgepy"
     cooldown:
       default-days: 3

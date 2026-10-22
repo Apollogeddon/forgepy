@@ -11,11 +11,9 @@ import pytest
 import tomlkit
 import yaml
 
-import forgepy
 from forgepy.config import InitConfig, Mode
 from forgepy.core import EXIT_INVALID_CONFIG, init
 from forgepy.features import base
-from forgepy.features import workflows as workflows_feature
 from forgepy.features.base import FORGEPY_GIT, release_tag
 from forgepy.utils.filesystem import MemoryFileSystem
 
@@ -23,8 +21,6 @@ PROJECT = Path("project")
 COOLDOWN_DAYS = 3
 INDEX = PROJECT / ".github/workflows/.index.yml"
 FORGEPY = "apollogeddon/forgepy/.github/workflows"
-# the generated .index.yml calls the pipelines at the running forgepy's release
-REF = release_tag(forgepy.__version__) or "main"
 
 
 def _workflow(fs: MemoryFileSystem) -> dict[str, Any]:
@@ -135,7 +131,7 @@ def test_init_docker_adds_docker_job_after_the_checks(mode: Mode, *, debian: boo
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT, mode=mode, debian=debian, docker=True), fs)
     docker = _workflow(fs)["jobs"]["docker"]
-    assert docker["uses"] == f"{FORGEPY}/docker.yml@{REF}"
+    assert docker["uses"] == f"{FORGEPY}/docker.yml@main"
     assert docker["needs"] == ["version", checks]
     assert docker["permissions"]["packages"] == "write"
     assert docker["with"]["version"] == "${{ needs.version.outputs.version }}"
@@ -151,7 +147,7 @@ def test_init_packages_a_debian_backend_after_its_checks_and_attaches_it_to_the_
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT, debian=True), fs)
     jobs = _workflow(fs)["jobs"]
-    assert jobs["service"]["uses"] == f"{FORGEPY}/service.yml@{REF}"
+    assert jobs["service"]["uses"] == f"{FORGEPY}/service.yml@main"
     assert jobs["debian"]["needs"] == "service"
     assert jobs["publish"]["with"]["assets"] == "debian-package"
 
@@ -225,15 +221,15 @@ def test_init_pins_the_forgepy_source_to_the_running_release(monkeypatch: pytest
     assert _forgepy_source(fs) == {"git": FORGEPY_GIT, "tag": "v1.2.3"}
 
 
-# a tag Dependabot moves, rather than main, which changes under the project without it knowing
-@pytest.mark.parametrize(("version", "ref"), [("1.2.3", "v1.2.3"), ("1.3.0.dev0", "main"), ("2.0.0rc1", "main")])
-def test_init_calls_the_pipelines_at_the_running_release(monkeypatch: pytest.MonkeyPatch, version: str, ref: str):
-    monkeypatch.setattr(workflows_feature, "__version__", version)
+# projects track the pipelines at main on purpose, whichever forgepy release ran init
+@pytest.mark.parametrize("version", ["1.2.3", "1.3.0.dev0"])
+def test_init_calls_the_pipelines_at_main(monkeypatch: pytest.MonkeyPatch, version: str):
+    monkeypatch.setattr(base, "__version__", version)
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT), fs)
     uses = [job["uses"] for job in _workflow(fs)["jobs"].values()]
     assert uses
-    assert all(use.endswith(f".yml@{ref}") for use in uses)
+    assert all(use.endswith(".yml@main") for use in uses)
 
 
 def test_init_leaves_the_forgepy_source_untagged_for_a_build_that_isnt_a_release(
@@ -346,8 +342,8 @@ def test_init_website_generates_website_workflow():
     cfg = InitConfig(target=PROJECT, mode=Mode.WEBSITE)
     init(cfg, fs)
     jobs = _workflow(fs)["jobs"]
-    assert jobs["website"]["uses"] == f"{FORGEPY}/website.yml@{REF}"
-    assert jobs["pages"]["uses"] == f"{FORGEPY}/pages.yml@{REF}"
+    assert jobs["website"]["uses"] == f"{FORGEPY}/website.yml@main"
+    assert jobs["pages"]["uses"] == f"{FORGEPY}/pages.yml@main"
 
 
 def test_init_debian_creates_packaging_files():
@@ -357,7 +353,7 @@ def test_init_debian_creates_packaging_files():
     assert fs.exists(PROJECT / "nfpm.yaml")
     assert fs.exists(PROJECT / "packaging/project.service")
     assert fs.exists(PROJECT / "packaging/postinstall.sh")
-    assert _workflow(fs)["jobs"]["debian"]["uses"] == f"{FORGEPY}/debian.yml@{REF}"
+    assert _workflow(fs)["jobs"]["debian"]["uses"] == f"{FORGEPY}/debian.yml@main"
 
 
 def test_init_debian_disabled_removes_packaging_files_with_force():
@@ -435,7 +431,7 @@ def test_init_generates_least_privilege_ci_that_never_cancels_main(cfg: InitConf
         if name not in ("publish", "pages"):
             assert "id-token" not in job["permissions"], f"{name} asks for id-token"
     # forgepy's files are refreshed through a pull request, weekly, on a manual run and after a Dependabot merge
-    assert workflow["jobs"]["patch"]["uses"] == f"{FORGEPY}/patch.yml@{REF}"
+    assert workflow["jobs"]["patch"]["uses"] == f"{FORGEPY}/patch.yml@main"
 
 
 def test_init_jython_installs_only_the_dev_tools():
@@ -521,8 +517,8 @@ def test_init_writes_editorconfig_and_dependabot_with_a_cooldown():
     dependabot = yaml.safe_load(fs.read_text(PROJECT / ".github/dependabot.yml"))
     assert [u["package-ecosystem"] for u in dependabot["updates"]] == ["uv", "github-actions"]
     assert all(u["cooldown"]["default-days"] == COOLDOWN_DAYS for u in dependabot["updates"])
-    # Dependabot moves the forgepy release .index.yml calls the pipelines at
-    assert "ignore" not in dependabot["updates"][1]
+    # the pipelines are called at @main, which has no versions to propose
+    assert dependabot["updates"][1]["ignore"] == [{"dependency-name": "apollogeddon/forgepy"}]
 
 
 def test_init_docker_adds_docker_to_dependabot():

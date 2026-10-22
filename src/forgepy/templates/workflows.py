@@ -60,8 +60,6 @@ class IndexWorkflowOptions:
     versioning: bool = True
     # a --jython project's scripts are deployed as they are, so there's nothing to build
     build: bool = True
-    # the forgepy release tag the pipelines are called at, which Dependabot moves; main for a build that isn't one
-    ref: str = "main"
 
 
 @dataclass
@@ -76,14 +74,14 @@ class PipelineJob:
     # each by name: secrets: inherit would hand every repository secret to a workflow in another repository
     secrets: dict[str, str] = field(default_factory=dict[str, str])
 
-    def render(self, ref: str) -> str:
+    def render(self) -> str:
         lines = [f"  # {line}" for line in self.comment.splitlines()]
         lines.append(f"  {self.id}:")
         if self.needs:
             lines.append(f"    needs: {self.needs[0] if len(self.needs) == 1 else '[' + ', '.join(self.needs) + ']'}")
         if self.condition:
             lines.append(f"    if: {_expr(self.condition)}")
-        lines.append(f"    uses: {FORGEPY_WORKFLOWS}/{self.pipeline}.yml@{ref}")
+        lines.append(f"    uses: {FORGEPY_WORKFLOWS}/{self.pipeline}.yml@main")
         if self.inputs:
             lines.append("    with:")
             lines.extend(
@@ -263,7 +261,7 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
         )
     )
 
-    return _HEADER + "\n".join(job.render(cfg.ref) for job in jobs)
+    return _HEADER + "\n".join(job.render() for job in jobs)
 
 
 _CALLS_FORGEPY = re.compile(r"apollogeddon/forgepy/\.github/workflows/", re.IGNORECASE)

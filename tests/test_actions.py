@@ -229,13 +229,6 @@ def test_generated_index_grants_nothing_by_default(name: str, text: str):  # noq
     assert _load_text(text)["permissions"] == {}
 
 
-def test_generated_index_calls_the_pipelines_at_the_ref_it_is_given():
-    cfg = workflow_templates.IndexWorkflowOptions(mode="library", ref="v1.2.3")
-    uses = [job["uses"] for job in _load_text(workflow_templates.index_workflow(cfg))["jobs"].values()]
-    assert uses
-    assert all(use.endswith(".yml@v1.2.3") for use in uses)
-
-
 # --- wiring: a caller's inputs, secrets, outputs and permissions match what it calls -------------
 
 _LEVELS = {"none": 0, "read": 1, "write": 2}
@@ -285,9 +278,8 @@ def _local(uses: str) -> str | None:
     return uses.removeprefix("./.github/workflows/") if uses.startswith("./.github/workflows/") else None
 
 
-def _at_a_release(uses: str) -> str | None:
-    """A call to forgepy's pipelines at a release tag, or at main from a build that isn't a release."""
-    match = re.fullmatch(r"apollogeddon/forgepy/\.github/workflows/([\w-]+\.yml)@(?:main|v\d+\.\d+\.\d+)", uses)
+def _at_main(uses: str) -> str | None:
+    match = re.fullmatch(r"apollogeddon/forgepy/\.github/workflows/([\w-]+\.yml)@main", uses)
     return match.group(1) if match else None
 
 
@@ -376,10 +368,10 @@ class TestOwnIndex:
 
 @pytest.mark.parametrize(("name", "text"), GENERATED, ids=[name for name, _ in GENERATED])
 class TestGeneratedIndex:
-    def test_calls_forgepys_pipelines_at_a_release_with_inputs_they_declare_and_the_permissions_they_need(
+    def test_calls_forgepys_pipelines_at_main_with_inputs_they_declare_and_the_permissions_they_need(
         self, name: str, text: str
     ):
-        _expect_wiring(f"generated {name}", _load_text(text), _at_a_release)
+        _expect_wiring(f"generated {name}", _load_text(text), _at_main)
 
     def test_listens_for_the_merge_pipelines_dispatch(self, name: str, text: str):  # noqa: ARG002
         assert _on(_load_text(text))["repository_dispatch"]["types"] == [_merge_dispatch_type()]
@@ -611,7 +603,7 @@ jobs:
 """)
     job = caller["jobs"]["library"]
     job["name"] = re.sub(r"\$\{\{ matrix\.api \}\}", "8.1", job["name"])
-    _expect_wiring("matrix caller", caller, _at_a_release)
+    _expect_wiring("matrix caller", caller, _at_main)
 
 
 @pytest.mark.parametrize("name", CHECKS)
