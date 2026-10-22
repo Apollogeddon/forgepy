@@ -131,6 +131,7 @@ The other modes differ only in their jobs:
 | `--debian` | `version`, `service`, `debian`, `publish` (the `.deb` attached to the release), `patch`, `merge` |
 
 - `--docker` adds a `docker` job after the checks: it builds on pull requests, and builds and pushes on a release. `merge` waits for it, so a broken image stops a Dependabot merge.
+- `--windows` and `--macos` pass `test_windows: windows-latest` and `test_macos: macos-latest` to a library's or backend's checks, which then test and build on those systems too.
 - `--jython` passes `run_build: false` to the checks: the scripts are deployed as they are, so there's nothing to build.
 - `--no-testing` passes `run_tests: false` to the checks, which skips their `test` stage.
 - `--no-versioning` leaves out `version` and `publish`: the checks, and a website's deploy, run on every push to `main` instead.

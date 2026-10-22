@@ -56,6 +56,9 @@ class IndexWorkflowOptions:
     mode: PipelineMode
     debian: bool = False
     docker: bool = False
+    # the check pipeline's Windows and macOS stages, which a website's has none of
+    windows: bool = False
+    macos: bool = False
     testing: bool = True
     versioning: bool = True
     # a --jython project's scripts are deployed as they are, so there's nothing to build
@@ -102,8 +105,13 @@ def pipeline_inputs(cfg: IndexWorkflowOptions) -> dict[str, str | bool]:
     --no-testing turns off the test stage and --jython the build stage. --no-versioning leaves out the
     version job, and with it the release testing and publish; --no-linting needs nothing, as forgepy's
     toolchain always installs ruff and basedpyright, which run on their defaults without a project config.
+    --windows and --macos turn on the stages that test and build on them.
     """
     inputs: dict[str, str | bool] = {}
+    if cfg.windows:
+        inputs["test_windows"] = "windows-latest"
+    if cfg.macos:
+        inputs["test_macos"] = "macos-latest"
     if not cfg.testing:
         inputs["run_tests"] = False
     if not cfg.build:

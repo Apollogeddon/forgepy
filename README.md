@@ -62,7 +62,7 @@ uv run poe hooks
 | `--library` | Package published to PyPI |
 | `--website` | Static documentation site built with [Zensical](https://zensical.org/) |
 
-Add `--jython` to a backend for scripts that run on Jython 2.7, or `--docker` and `--debian` for container and `.deb` packaging. Run `forgepy init --help` for every flag, or see the [flag reference](https://apollogeddon.github.io/forgepy/getting-started/#cli-options).
+Add `--jython` to a backend for scripts that run on Jython 2.7, `--docker` and `--debian` for container and `.deb` packaging, or `--windows` and `--macos` to test and build on those systems in CI too. Run `forgepy init --help` for every flag, or see the [flag reference](https://apollogeddon.github.io/forgepy/getting-started/#cli-options).
 
 `init` does the following:
 

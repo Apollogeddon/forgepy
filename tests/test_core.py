@@ -163,6 +163,32 @@ def test_init_website_docker_creates_nginx_dockerfile():
     assert "FROM --platform=$BUILDPLATFORM" in dockerfile
 
 
+@pytest.mark.parametrize("mode", [Mode.BACKEND, Mode.LIBRARY])
+@pytest.mark.parametrize(("windows", "macos"), [(True, False), (False, True), (True, True)])
+def test_init_tests_and_builds_on_windows_and_macos_when_asked(mode: Mode, *, windows: bool, macos: bool):
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, mode=mode, windows=windows, macos=macos), fs) == 0
+    checks = _workflow(fs)["jobs"]["library" if mode.is_library else "service"]
+    expected = {"test_windows": "windows-latest"} if windows else {}
+    expected |= {"test_macos": "macos-latest"} if macos else {}
+    assert {k: v for k, v in checks.get("with", {}).items() if k.startswith("test_")} == expected
+
+
+def test_init_leaves_windows_and_macos_off_by_default():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    assert "with" not in _workflow(fs)["jobs"]["service"]
+
+
+@pytest.mark.parametrize("flag", ["windows", "macos"])
+def test_init_refuses_windows_and_macos_for_a_website(flag: str):
+    fs = MemoryFileSystem()
+    cfg = InitConfig(target=PROJECT, mode=Mode.WEBSITE, windows=flag == "windows", macos=flag == "macos")
+    assert cfg.validate() == [f"--{flag} is not available in website mode"]
+    assert init(cfg, fs) == EXIT_INVALID_CONFIG
+    assert not fs.exists(PROJECT / "pyproject.toml")
+
+
 def test_init_rejects_invalid_combinations_without_writing():
     fs = MemoryFileSystem()
     assert init(InitConfig(target=PROJECT, mode=Mode.LIBRARY, docker=True), fs) == EXIT_INVALID_CONFIG
@@ -414,8 +440,10 @@ def test_init_release_config_bumps_the_normalized_name_in_uv_lock():
         InitConfig(target=PROJECT, mode=Mode.WEBSITE),
         InitConfig(target=PROJECT, debian=True),
         InitConfig(target=PROJECT, docker=True),
+        InitConfig(target=PROJECT, windows=True, macos=True),
+        InitConfig(target=PROJECT, mode=Mode.LIBRARY, windows=True, macos=True),
     ],
-    ids=["backend", "library", "website", "debian", "docker"],
+    ids=["backend", "library", "website", "debian", "docker", "windows-macos", "library-windows-macos"],
 )
 def test_init_generates_least_privilege_ci_that_never_cancels_main(cfg: InitConfig):
     fs = MemoryFileSystem()

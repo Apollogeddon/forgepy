@@ -135,6 +135,14 @@ for _mode, _debian, _docker, _versioning, _testing, _build in itertools.product(
             ),
         )
     )
+# --windows and --macos, which a website has no stages for
+MODES.extend(
+    (f"{_mode} windows macos", workflow_templates.IndexWorkflowOptions(mode=_mode, windows=True, macos=True))
+    for _mode in ("library", "service")
+)
+MODES.append(
+    ("service jython windows", workflow_templates.IndexWorkflowOptions(mode="service", build=False, windows=True))
+)
 GENERATED = [(name, workflow_templates.index_workflow(cfg)) for name, cfg in MODES]
 
 
@@ -787,9 +795,13 @@ def test_own_index_tests_the_tool_on_every_platform_and_supported_python():
 
 
 @pytest.mark.parametrize(("name", "text"), GENERATED, ids=[name for name, _ in GENERATED])
-def test_generated_index_leaves_the_extra_test_legs_off(name: str, text: str):  # noqa: ARG001
-    for key in ("test_windows", "test_macos", "test_versions"):
-        assert key not in text
+def test_generated_index_tests_on_windows_and_macos_only_when_asked(name: str, text: str):
+    jobs = _load_text(text)["jobs"]
+    checks = next(job for job_id, job in jobs.items() if job_id in ("library", "service", "website"))
+    inputs = checks.get("with", {})
+    assert inputs.get("test_windows") == ("windows-latest" if "windows" in name.split() else None)
+    assert inputs.get("test_macos") == ("macos-latest" if "macos" in name.split() else None)
+    assert "test_versions" not in text
 
 
 # --- website site checks --------------------------------------------------------------------------

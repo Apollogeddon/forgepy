@@ -86,7 +86,7 @@ The `test` and `build` stages run on `runs_on` alone. To test and build on Windo
       setup_script: '.github/setup.sh'
 ```
 
-Each runs the [setup script](#setup-scripts), then `pre_build_command` and `uv sync --locked`, then `uv run poe <extra_test_task>` (skipped with `run_tests: false`), then `build_command` (skipped with `run_build: false`), and uploads `dist/` as the `<artifact_name>-windows` or `<artifact_name>-macos` artifact. The `env` applies to the tests and the build alike. Every `run` step uses bash, Git Bash on Windows. Empty, the default, skips the stage, so the generated `.index.yml` spends no Windows or macOS minutes, which a private repository pays for at a higher rate; you can set them on its check job yourself. Forge.py's own CI sets both.
+Each runs the [setup script](#setup-scripts), then `pre_build_command` and `uv sync --locked`, then `uv run poe <extra_test_task>` (skipped with `run_tests: false`), then `build_command` (skipped with `run_build: false`), and uploads `dist/` as the `<artifact_name>-windows` or `<artifact_name>-macos` artifact. The `env` applies to the tests and the build alike. Every `run` step uses bash, Git Bash on Windows. Empty, the default, skips the stage, so the generated `.index.yml` spends no Windows or macOS minutes, which a private repository pays for at a higher rate, unless `init` was run with `--windows` or `--macos`; you can also set them on its check job yourself. Forge.py's own CI sets both.
 
 ### Setup scripts
 

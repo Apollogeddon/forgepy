@@ -171,6 +171,10 @@ CI builds the image for every configured platform. See [docker.yml](workflows/re
 
 CI's `debian` pipeline builds on Debian trixie and its `python3`, so the package installs on trixie. A Debian project must target that Python or older: `init --debian` refuses a newer `--python`.
 
+### Windows and macOS
+
+`--windows` and `--macos` add no files: they set `test_windows: windows-latest` and `test_macos: macos-latest` on the checks job in `.index.yml`, so the `library` or `service` pipeline also runs the tests and the build on that system and uploads the build as its own artifact. A website has no such stages, so `init` refuses them with `--website`. Without them, CI runs on Linux only, as a private repository pays more for Windows and macOS minutes. To pass a runner's environment, a shorter suite or a setup script, edit the job's inputs instead: see [Windows and macOS](workflows/reference.md#windows-and-macos).
+
 ## Jython projects
 
 `forgepy init --jython` is for scripts that run on Jython 2.7, such as an application platform's scripting layer. The tools still run on CPython 3: uv installs them and the test suite, but doesn't build or install the project itself (`[tool.uv] package = false`, no build system and no `build` task). Scripts go under `src/`, and `pytest.toml` puts `src` on the import path.

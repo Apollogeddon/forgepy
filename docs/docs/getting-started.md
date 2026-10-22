@@ -115,6 +115,8 @@ forgepy --version
 | `--all`, `--no-all` | Turn every standard feature on or off at once. An explicit flag such as `--testing` still wins. |
 | `--docker` | Add a `Dockerfile` and a container CI job. Not available with `--library`. |
 | `--debian` | Add nFPM-based `.deb` packaging. `--backend` only. |
+| `--windows` | Test and build on Windows too, in CI. Not available with `--website`. See [Windows and macOS](configuration.md#windows-and-macos). |
+| `--macos` | Test and build on macOS too, in CI. Not available with `--website`. |
 | `--jython` | Scripts that run on Jython 2.7: no packaging, lint rules that keep Python 2 syntax, and a vermin compatibility check. `--backend` only; needs linting, and can't be combined with `--docker` or `--debian`. See [Jython projects](configuration.md#jython-projects). |
 | `--force` | Overwrite existing config files and tasks, and remove the files of features you turned off. |
 | `--dry-run` | Show what would change without writing anything. |
