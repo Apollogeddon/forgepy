@@ -28,6 +28,8 @@ FIXTURES = Path(__file__).parent / "fixtures" / "legacy"
 # the bool True), so keys are Any here rather than str.
 YamlDoc = dict[Any, Any]
 
+needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the github-script body")
+
 FILES = sorted(path.name for path in WORKFLOWS_DIR.iterdir() if path.suffix == ".yml")
 ROOTS = [name for name in FILES if name.startswith(".")]
 PIPELINES = [name for name in FILES if not name.startswith(".")]
@@ -230,9 +232,13 @@ def _at_main(uses: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _dispatch_step() -> YamlDoc:
+    scripted = (step for step in _steps("merge.yml", "squash") if "script" in step.get("with", {}))
+    return next(step for step in scripted if "createDispatchEvent" in step["with"]["script"])
+
+
 def _merge_dispatch_type() -> str:
-    step = next(s for s in _steps("merge.yml", "squash") if "createDispatchEvent" in s["with"]["script"])
-    return cast(str, step["env"]["DISPATCH_TYPE"])
+    return cast(str, _dispatch_step()["env"]["DISPATCH_TYPE"])
 
 
 _CONCURRENCY = {"group": "${{ github.workflow }}-${{ github.head_ref || github.run_id }}", "cancel-in-progress": True}
@@ -746,10 +752,82 @@ def test_squash_needs_the_checks_and_dependabot_to_open_the_pull_request_and_mak
     assert _workflow_call("merge.yml")["inputs"]["checks_passed"]["default"] is False
 
 
+def test_squash_merges_only_a_pull_request_from_this_repository():
+    gate = str(_jobs("merge.yml")["squash"]["if"])
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in gate
+
+
+def test_squash_reads_the_update_type_first_and_passes_it_through_the_environment():
+    steps = _steps("merge.yml", "squash")
+    assert steps[0]["id"] == "metadata"
+    assert re.match(r"dependabot/fetch-metadata@", steps[0]["uses"])
+    assert steps[0]["with"]["github-token"] == "${{ secrets.GITHUB_TOKEN }}"
+    merge = _step("merge.yml", "squash", "Enable auto-merge")
+    assert merge["env"]["UPDATE_TYPE"] == "${{ steps.metadata.outputs.update-type }}"
+    assert "steps.metadata" not in merge["with"]["script"]
+
+
+# runs the squash step's github-script body under Node, with GitHub's API answering as a branch with no
+# protection rules does, so the step merges straight away
+_SQUASH_HARNESS = """
+const calls = { notice: [], info: [], warning: [], graphql: [], merge: [], dispatch: [] };
+const record = (kind) => (message) => calls[kind].push(message);
+const core = { notice: record('notice'), info: record('info'), warning: record('warning') };
+const github = {
+  graphql: async (query, vars) => { calls.graphql.push(vars); throw new Error('Pull request is in clean status'); },
+  rest: {
+    pulls: { merge: async (args) => { calls.merge.push(args); } },
+    repos: { createDispatchEvent: async (args) => { calls.dispatch.push(args); } },
+  },
+};
+const context = {
+  repo: { owner: 'o', repo: 'r' },
+  payload: { pull_request: { number: 7, node_id: 'PR_7', head: { sha: 'abc123' }, base: { ref: 'main' } } },
+};
+const body = require('node:fs').readFileSync(process.argv[1], 'utf8');
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+new AsyncFunction('require', 'core', 'github', 'context', body)(require, core, github, context)
+  .then(() => console.log(JSON.stringify(calls)));
+"""
+
+
+def _run_squash(tmp_path: Path, update_type: str) -> dict[str, list[Any]]:
+    step = _step("merge.yml", "squash", "Enable auto-merge")
+    script = tmp_path / "squash.js"
+    script.write_text(step["with"]["script"], encoding="utf-8")
+    env = {**os.environ, "DISPATCH_TYPE": step["env"]["DISPATCH_TYPE"], "UPDATE_TYPE": update_type}
+    node = cast(str, shutil.which("node"))
+    harness = [node, "-e", _SQUASH_HARNESS, str(script)]
+    out = subprocess.run(harness, env=env, capture_output=True, text=True, check=True)
+    return cast(dict[str, list[Any]], json.loads(out.stdout))
+
+
+@needs_node
+@pytest.mark.parametrize("update_type", ["version-update:semver-minor", "version-update:semver-patch"])
+def test_squash_merges_a_minor_or_patch_update_at_the_commit_the_checks_ran_on(tmp_path: Path, update_type: str):
+    calls = _run_squash(tmp_path, update_type)
+    assert calls["graphql"] == [{"id": "PR_7", "oid": "abc123"}]
+    assert calls["merge"] == [{"owner": "o", "repo": "r", "pull_number": 7, "merge_method": "squash", "sha": "abc123"}]
+    assert len(calls["dispatch"]) == 1
+    assert calls["notice"] == []
+
+
+@needs_node
+@pytest.mark.parametrize("update_type", ["version-update:semver-major", ""])
+def test_squash_leaves_a_major_or_unclassified_update_to_a_person(tmp_path: Path, update_type: str):
+    calls = _run_squash(tmp_path, update_type)
+    assert calls["graphql"] == calls["merge"] == calls["dispatch"] == []
+    assert len(calls["notice"]) == 1
+
+
+def test_squash_enables_auto_merge_only_for_the_checked_commit():
+    script = _step("merge.yml", "squash", "Enable auto-merge")["with"]["script"]
+    assert "expectedHeadOid: $oid" in script
+
+
 def test_squash_sends_the_auto_merged_dispatch_once_it_merges():
-    script = next(s for s in _steps("merge.yml", "squash") if "createDispatchEvent" in s["with"]["script"])
     assert _merge_dispatch_type() == "auto-merged"
-    assert "dispatchOnceMerged" in script["with"]["script"]
+    assert "dispatchOnceMerged" in _dispatch_step()["with"]["script"]
 
 
 # --- pages, publish and patch ---------------------------------------------------------------------
@@ -931,9 +1009,6 @@ def test_osv_scan_never_swallows_the_result_and_is_the_same_in_every_check_pipel
     assert names.index("Install OSV-Scanner") == names.index("Scan with OSV") - 1
     assert report["env"]["OSV_ENFORCE"] == "${{ github.event_name == 'pull_request' }}"
     assert report == _step("library.yml", "scan", "Report OSV findings")
-
-
-needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the github-script body")
 
 
 @needs_node
