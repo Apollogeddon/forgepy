@@ -332,8 +332,12 @@ class TestOwnIndex:
 
     def test_scores_itself_with_scorecard_on_main_and_weekly_only_when_public(self):
         scorecard = self.doc["jobs"]["scorecard"]
-        assert scorecard["if"].startswith("github.event.repository.private == false && ")
-        assert "github.event_name == 'push' || github.event_name == 'schedule'" in scorecard["if"]
+        assert (
+            "github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private == false"
+            in scorecard["if"]
+        )
+        # a scheduled run's event has no repository, so the weekly run reads the run's own visibility
+        assert "github.event_name == 'schedule' && github.repository_visibility == 'public'" in scorecard["if"]
         assert scorecard["permissions"] == {"contents": "read", "security-events": "write", "actions": "read"}
         score = next(step for step in scorecard["steps"] if "ossf/scorecard-action@" in step.get("uses", ""))
         assert score["with"]["publish_results"] is False

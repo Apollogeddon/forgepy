@@ -74,9 +74,10 @@ jobs:
   # public repository. Not a pipeline: it's for this repository, not the projects forgepy generates
   scorecard:
     name: scorecard
+    # a scheduled run's event carries no repository, so it reads the visibility from the run's context instead
     if: >-
-      github.event.repository.private == false && github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'schedule')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private == false) ||
+      (github.event_name == 'schedule' && github.repository_visibility == 'public')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
