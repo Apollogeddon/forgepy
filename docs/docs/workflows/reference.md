@@ -20,7 +20,7 @@ Every pipeline takes a `runs_on` input, default `ubuntu-latest`, for each of its
 The three share their first four stages, job for job:
 
 1. **`lint`**: `uv sync --locked` (plus `sync_args`), then `ruff check`, `ruff format --check`, `basedpyright`, and `forgepy sync --check` when the project has a `.forgepy/` directory. In a `--jython` project (one with `.forgepy/ruff-jython.toml`) it also runs `poe compat`, the vermin Jython 2.7 check.
-2. **`scan`**: Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner dependency scan. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail it: an advisory published against a dependency you already have shouldn't stop releases, and the weekly `patch` pipeline can upgrade it. Lower findings are warning annotations, and every finding is listed in the job summary. OSV-Scanner is a pinned release, checked against the checksums published with it, and a download that fails the check fails the stage. If the scanner can't finish, for example because OSV's API is unreachable, a pull request fails, as its dependencies weren't checked; elsewhere the stage warns and passes. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside the lockfile:
+2. **`scan`**: Gitleaks secret scan (skip with `enable_secrets: false`) and an OSV-Scanner dependency scan. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail it: an advisory published against a dependency you already have shouldn't stop releases, and a Dependabot security update proposes the upgrade. Lower findings are warning annotations, and every finding is listed in the job summary. OSV-Scanner is a pinned release, checked against the checksums published with it, and a download that fails the check fails the stage. If the scanner can't finish, for example because OSV's API is unreachable, a pull request fails, as its dependencies weren't checked; elsewhere the stage warns and passes. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside the lockfile:
 
     ```toml
     [[IgnoredVulns]]
@@ -222,15 +222,15 @@ The website Dockerfile builds the static site once on the build host and only th
 
 ## patch.yml
 
-*Managed configs and security patches, weekly, on a manual run and after a Dependabot merge.*
+*A refresh of the files Forge.py manages, proposed as a pull request, weekly, on a manual run and after a Dependabot merge.*
 
 After a Dependabot merge, the `auto-merged` dispatch runs it straight away on the updated `main`, without waiting for the week. Dependabot doesn't propose Forge.py upgrades: a project moves to a new Forge.py release by changing the tag in `[tool.uv.sources]`, then running `uv lock` and `forgepy sync` (see [Upgrading](../configuration.md#upgrading)).
 
-1. **`update`**: On `main`, in `working_directory`:
-    1. When the project has a `.forgepy/` directory, runs `forgepy sync` and commits any change to it as `chore(deps): refresh the configs forgepy manages`, so a project moved to a new tag without `forgepy sync`, or with `.forgepy/` edited by hand, doesn't leave `lint`'s `forgepy sync --check` failing. It never moves the tag.
-    2. Scans `uv.lock` with OSV-Scanner, upgrades only the vulnerable packages with `uv lock --upgrade-package` (transitive ones included, within the ranges `pyproject.toml` allows, without building any package), and commits the new `uv.lock` as `fix(deps): upgrade packages with known vulnerabilities via osv-scanner`. OSV-Scanner can't fix a `uv.lock` in place, so uv does the upgrade.
+1. **`update`**: On `main`, when `working_directory` has a `.forgepy/` directory, runs `forgepy sync`, so a project moved to a new tag without `forgepy sync`, or with `.forgepy/` edited by hand, doesn't leave `lint`'s `forgepy sync --check` failing. It never moves the tag. When anything changed, it commits it as `chore(deps): refresh the files forgepy manages`, force-pushes the commit to the `forgepy/sync` branch (`forgepy/sync-<working_directory>` for a project in a subdirectory), and opens a pull request for it unless one is open already. It never pushes to `main`, and the checkout keeps no credentials: only the push gets the token.
 
-It checks out the tip of `main`, so a second call in the same run (forgepy patches its docs site after the tool) commits on top of the first. The commits are made with `GITHUB_TOKEN`, so they start no run of their own: release-please picks them up on the next push to `main`.
+The pull request is opened with `GITHUB_TOKEN`, so its checks don't start on their own: close and reopen it, or push to its branch, to run them.
+
+Vulnerable dependencies are left to [Dependabot security updates](https://docs.github.com/en/code-security/dependabot/dependabot-security-updates/about-dependabot-security-updates), which propose each upgrade as a pull request, on private repositories too, at no cost. They're a repository setting: turn them on in **Settings → Code security → Dependabot security updates**.
 
 ## merge.yml
 

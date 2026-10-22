@@ -6,8 +6,8 @@ from typing import Literal
 
 # The generated .github/workflows/.index.yml: each job calls one forgepy pipeline, so a run page reads
 # <pipeline> / <stage>. Pull requests run the checks, main runs release-please and, on a release, the checks
-# again before shipping, and patch upgrades vulnerable dependencies weekly, on a manual run and after a
-# Dependabot merge.
+# again before shipping, and patch proposes a refresh of the files forgepy manages weekly, on a manual run and
+# after a Dependabot merge. Dependabot security updates upgrade vulnerable dependencies.
 
 PipelineMode = Literal["library", "service", "website"]
 
@@ -222,14 +222,14 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
             id="patch",
             comment=(
                 "weekly, on a manual run and after a Dependabot merge: "
-                "forgepy's configs refreshed and vulnerable packages upgraded on main"
+                "a pull request refreshing the files forgepy manages"
             ),
             condition=(
                 "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
                 " || github.event_name == 'repository_dispatch'"
             ),
             pipeline="patch",
-            permissions={"contents": "write"},
+            permissions={"contents": "write", "pull-requests": "write"},
         )
     )
 

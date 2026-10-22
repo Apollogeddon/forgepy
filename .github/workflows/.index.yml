@@ -126,25 +126,17 @@ jobs:
       pages: write
       id-token: write
 
-  patch:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
-    uses: ./.github/workflows/patch.yml
-    with:
-      runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
-    permissions:
-      contents: write
-
+  # the docs site's forgepy files refreshed through a pull request; the tool has none of its own to refresh
   patch-docs:
     name: patch (docs)
-    # one at a time, so the second commits on top of the first
-    needs: patch
-    if: ${{ !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
     uses: ./.github/workflows/patch.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
       working_directory: 'docs'
     permissions:
       contents: write
+      pull-requests: write
 
   # Dependabot's pull requests: a review request, and a squash merge when the checks passed
   merge:

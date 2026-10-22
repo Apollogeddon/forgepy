@@ -16,4 +16,5 @@ This repository uses:
 
 - **Gitleaks**, which scans each change for committed secrets.
 - **OSV-Scanner**, which scans the dependencies for known vulnerabilities on each change.
+- **Dependabot security updates**, which propose an upgrade of each dependency with a known vulnerability as a pull request.
 - **Dependabot**, which proposes dependency and GitHub Actions updates. It waits three days after a version is published before proposing it, so a compromised release has time to be caught and yanked upstream.

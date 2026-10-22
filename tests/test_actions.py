@@ -277,11 +277,11 @@ class TestOwnIndex:
     def test_has_the_same_concurrency_as_a_generated_index(self):
         assert self.doc["concurrency"] == _load_text(GENERATED[0][1])["concurrency"] == _CONCURRENCY
 
-    def test_patches_the_tool_and_the_docs_one_after_the_other_on_the_schedule_a_manual_run_and_a_merge(self):
+    def test_refreshes_the_docs_sites_forgepy_files_on_the_schedule_a_manual_run_and_a_merge(self):
         jobs = self.doc["jobs"]
-        assert jobs["patch"]["if"] == _PATCH_EVENTS
-        assert _PATCH_EVENTS in jobs["patch-docs"]["if"]
-        assert jobs["patch-docs"]["needs"] == "patch"
+        # the tool has no .forgepy/ of its own
+        assert "patch" not in jobs
+        assert jobs["patch-docs"]["if"] == _PATCH_EVENTS
         assert jobs["patch-docs"]["with"]["working_directory"] == "docs"
         assert {"schedule", "workflow_dispatch", "repository_dispatch"} <= set(_on(self.doc))
 
@@ -869,14 +869,69 @@ def test_publish_attaches_assets_only_when_given_an_artifact():
     assert "throw new Error('assets needs tag_name" in script
 
 
-def test_patch_refreshes_forgepys_configs_then_upgrades_vulnerable_packages():
-    names = [step["name"] for step in _steps("patch.yml", "update")]
-    assert names.index("Refresh forgepy's configs") < names.index("Upgrade vulnerable packages")
-    assert _step("patch.yml", "update", "Refresh forgepy's configs")["run"] == "uv run --locked forgepy sync"
-    assert _step("patch.yml", "update", "Commit the patches")["with"]["file_pattern"] == "uv.lock"
-    # resolves from published metadata only, so no package's build code runs in a job that pushes to main
-    assert "uv lock --no-build" in _step("patch.yml", "update", "Upgrade vulnerable packages")["run"]
+def test_patch_only_refreshes_forgepys_files_and_leaves_vulnerable_packages_to_dependabot():
+    text = (WORKFLOWS_DIR / "patch.yml").read_text(encoding="utf-8")
+    for gone in ("osv-scanner", "uv lock", "--upgrade-package", "git-auto-commit-action"):
+        assert gone not in text
+    assert _step("patch.yml", "update", "Refresh forgepy's files")["run"] == "uv run --locked forgepy sync"
     assert _jobs("patch.yml")["update"]["if"] == "github.ref == 'refs/heads/main'"
+    assert _jobs("patch.yml")["update"]["permissions"] == {"contents": "write", "pull-requests": "write"}
+
+
+def test_patch_gives_its_token_only_to_the_push():
+    assert _step("patch.yml", "update", "Check out")["with"]["persist-credentials"] is False
+    for step in _steps("patch.yml", "update"):
+        if "secrets.GITHUB_TOKEN" in yaml.safe_dump(step):
+            assert step["name"] == "Push the refresh"
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _run_patch_push(tmp_path: Path, working_directory: str, *, change: bool) -> tuple[Path, Path]:
+    remote = tmp_path / "remote.git"
+    _git(tmp_path, "init", "-q", "--bare", str(remote))
+    repo = tmp_path / "repo"
+    project = repo / working_directory
+    (project / ".forgepy").mkdir(parents=True)
+    (project / ".forgepy" / "ruff.toml").write_text("old\n", encoding="utf-8")
+    _git(tmp_path, "init", "-q", "-b", "main", str(repo))
+    _git(repo, "add", ".")
+    _git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init")
+    _git(repo, "remote", "add", "origin", str(remote))
+    if change:
+        (project / ".forgepy" / "ruff.toml").write_text("new\n", encoding="utf-8")
+    step = _step("patch.yml", "update", "Push the refresh")
+    output = tmp_path / "output"
+    output.touch()
+    branch = "forgepy/sync" if working_directory == "." else f"forgepy/sync-{working_directory}"
+    env = {**os.environ, "GH_TOKEN": "token", "BRANCH": branch, "GITHUB_OUTPUT": str(output)}
+    subprocess.run(["bash", "-e", "-c", step["run"]], cwd=project, env=env, check=True, capture_output=True)
+    return remote, output
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+@pytest.mark.parametrize(("working_directory", "branch"), [(".", "forgepy/sync"), ("docs", "forgepy/sync-docs")])
+def test_patch_pushes_a_refresh_to_its_own_branch_not_main(tmp_path: Path, working_directory: str, branch: str):
+    remote, output = _run_patch_push(tmp_path, working_directory, change=True)
+    assert _git(remote, "branch", "--format=%(refname:short)") == branch
+    assert _git(remote, "log", "-1", "--format=%s", branch) == "chore(deps): refresh the files forgepy manages"
+    assert output.read_text(encoding="utf-8") == f"branch={branch}\n"
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+def test_patch_pushes_nothing_when_nothing_changed(tmp_path: Path):
+    remote, output = _run_patch_push(tmp_path, ".", change=False)
+    assert _git(remote, "branch") == ""
+    assert output.read_text(encoding="utf-8") == ""
+    assert _step("patch.yml", "update", "Propose the refresh")["if"] == "steps.push.outputs.branch != ''"
+
+
+def test_patch_opens_a_pull_request_only_when_none_is_open():
+    script = _step("patch.yml", "update", "Propose the refresh")["with"]["script"]
+    assert script.index("pulls.list") < script.index("pulls.create")
+    assert "chore(deps): refresh the files forgepy manages" in script
 
 
 # --- debian and docker ----------------------------------------------------------------------------

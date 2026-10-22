@@ -1,7 +1,7 @@
 name: patch
 
-# Weekly: refreshes the configs forgepy manages, upgrades the packages in uv.lock with known
-# vulnerabilities, and commits each to main.
+# Weekly: refreshes the files forgepy manages and proposes the refresh as a pull request. Vulnerable
+# dependencies are left to Dependabot security updates, which propose their upgrades as pull requests too.
 
 on:
   workflow_call:
@@ -25,71 +25,71 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      pull-requests: write
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}
     steps:
-      # the branch's tip rather than the triggering commit, so a patch committed earlier in the run is kept;
-      # keeps its credentials, to push the patch
+      # no credentials kept: only the push gets the token, so sync and the tools it runs never see it
       - name: Check out
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref_name }}
+          persist-credentials: false
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
-          # no dependency cache in a job that pushes to main
+          # no dependency cache in a job that pushes
           enable-cache: false
-      # a project moved to a new forgepy tag without running sync gets the configs it manages refreshed here
-      - name: Refresh forgepy's configs
+      # a project moved to a new forgepy tag without running sync gets the files it manages refreshed here
+      - name: Refresh forgepy's files
         if: hashFiles(format('{0}/.forgepy/**', inputs.working_directory)) != ''
         run: uv run --locked forgepy sync
-      # sync is the only change in this checkout so far
-      - name: Commit forgepy's configs
+      # one branch per directory, replaced by each refresh, so there's never more than one pull request for it
+      - name: Push the refresh
+        id: push
         if: hashFiles(format('{0}/.forgepy/**', inputs.working_directory)) != ''
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "chore(deps): refresh the configs forgepy manages"
-          file_pattern: '.forgepy/*'
-          repository: ${{ inputs.working_directory }}
-      # a pinned release, checked against the checksums it was published with
-      - name: Install OSV-Scanner
         env:
-          OSV_SCANNER_VERSION: v2.7.0
-          ARCH: ${{ runner.arch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ inputs.working_directory == '.' && 'forgepy/sync' || format('forgepy/sync-{0}', inputs.working_directory) }}
         run: |
-          case "$ARCH" in
-            X64) arch=amd64 ;;
-            ARM64) arch=arm64 ;;
-            *) echo "::error::OSV-Scanner has no Linux build for $ARCH"; exit 1 ;;
-          esac
-          dir="$RUNNER_TEMP/osv-scanner"
-          mkdir -p "$dir"
-          cd "$dir"
-          base="https://github.com/google/osv-scanner/releases/download/$OSV_SCANNER_VERSION"
-          curl -fsSLO "$base/osv-scanner_linux_$arch"
-          curl -fsSLO "$base/osv-scanner_SHA256SUMS"
-          sha256sum -c --ignore-missing osv-scanner_SHA256SUMS
-          mv "osv-scanner_linux_$arch" osv-scanner
-          chmod +x osv-scanner
-      # osv-scanner can't fix uv.lock in place, so it finds the vulnerable packages and uv upgrades
-      # just those, transitive ones included, within the ranges pyproject.toml already allows
-      - name: Upgrade vulnerable packages
-        run: |
-          # 1: vulnerabilities found; 128: nothing to scan besides the project itself; anything else fails the job
-          status=0
-          "$RUNNER_TEMP/osv-scanner/osv-scanner" scan source -L uv.lock --format json --output-file "$RUNNER_TEMP/osv.json" || status=$?
-          if [ "$status" -eq 128 ]; then exit 0; fi
-          if [ "$status" -gt 1 ]; then exit "$status"; fi
-          mapfile -t packages < <(jq -r '[.results[]?.packages[]? | select(.package.ecosystem == "PyPI") | .package.name | ascii_downcase | gsub("[-_.]+"; "-")] | unique[]' "$RUNNER_TEMP/osv.json")
-          if [ "${#packages[@]}" -eq 0 ]; then exit 0; fi
-          args=()
-          for package in "${packages[@]}"; do args+=(--upgrade-package "$package"); done
-          # --no-build: resolve from published metadata only, so no package's build code runs in this job
-          uv lock --no-build "${args[@]}"
-      - name: Commit the patches
-        uses: stefanzweifel/git-auto-commit-action@v7
+          if [ -z "$(git status --porcelain -- .forgepy)" ]; then
+            echo "Nothing to refresh"
+            exit 0
+          fi
+          git add -- .forgepy
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "chore(deps): refresh the files forgepy manages"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
+            push --force origin "HEAD:refs/heads/$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+      # Through the API rather than the gh CLI, which a self-hosted runner may not have
+      - name: Propose the refresh
+        if: steps.push.outputs.branch != ''
+        uses: actions/github-script@v9
+        env:
+          BRANCH: ${{ steps.push.outputs.branch }}
+          BASE: ${{ github.ref_name }}
+          DIRECTORY: ${{ inputs.working_directory }}
         with:
-          commit_message: "fix(deps): upgrade packages with known vulnerabilities via osv-scanner"
-          file_pattern: 'uv.lock'
-          repository: ${{ inputs.working_directory }}
+          script: |
+            const head = process.env.BRANCH;
+            const { data: open } = await github.rest.pulls.list({
+              ...context.repo,
+              state: 'open',
+              head: `${context.repo.owner}:${head}`,
+            });
+            if (open.length) return core.info(`#${open[0].number} already proposes ${head}, which now holds this refresh`);
+            const where = process.env.DIRECTORY === '.' ? '' : ` in ${process.env.DIRECTORY}`;
+            const { data: pr } = await github.rest.pulls.create({
+              ...context.repo,
+              head,
+              base: process.env.BASE,
+              title: `chore(deps): refresh the files forgepy manages${where}`,
+              body: [
+                `\`forgepy sync\` refreshed \`.forgepy/\`${where} to match the forgepy release the project uses.`,
+                '',
+                // a pull request opened with GITHUB_TOKEN starts no workflow run
+                'Its checks only run once the branch gets a push from someone else, or the pull request is closed and reopened.',
+              ].join('\n'),
+            });
+            core.info(`Opened #${pr.number}`);

@@ -51,7 +51,7 @@ uv run forgepy sync
 
 `uv lock --upgrade-package forgepy` doesn't move past the tag. Dependabot doesn't look up newer tags on a Git remote, so it doesn't propose Forge.py upgrades. `forgepy sync` never moves the tag.
 
-`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and CI's `lint` stage all run it, so a stale snapshot fails the checks. The `patch` pipeline, weekly, on a manual run and after a Dependabot merge, runs `forgepy sync` on `main` and commits what it refreshes.
+`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and CI's `lint` stage all run it, so a stale snapshot fails the checks. The `patch` pipeline, weekly, on a manual run and after a Dependabot merge, runs `forgepy sync` and proposes what it refreshes as a pull request from the `forgepy/sync` branch.
 
 ## Quality and testing
 
