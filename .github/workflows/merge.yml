@@ -74,27 +74,14 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      # what the update changes, read from Dependabot's commit, so only minor and patch updates merge themselves
-      - name: Read the update
-        id: metadata
-        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
       # Through the API rather than the gh CLI, which a self-hosted runner may not have
       - name: Enable auto-merge
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           DISPATCH_TYPE: auto-merged
-          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
         with:
           script: |
             const pr = context.payload.pull_request;
-            // a major update can break the API it updates, and one fetch-metadata can't classify might be one
-            const automatic = ['version-update:semver-minor', 'version-update:semver-patch'];
-            if (!automatic.includes(process.env.UPDATE_TYPE)) {
-              const kind = process.env.UPDATE_TYPE || 'unclassified';
-              return core.notice(`Left #${pr.number} (${kind}) for a person: they merge majors and anything fetch-metadata can't classify`);
-            }
             // A merge made with GITHUB_TOKEN starts no workflow, so main's pipeline (and release-please)
             // would never see it. repository_dispatch is one of the two events that token may start.
             const dispatch = async () => {

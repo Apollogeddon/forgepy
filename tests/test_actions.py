@@ -925,14 +925,10 @@ def test_squash_merges_only_a_pull_request_from_this_repository():
     assert "github.event.pull_request.head.repo.full_name == github.repository" in gate
 
 
-def test_squash_reads_the_update_type_first_and_passes_it_through_the_environment():
-    steps = _steps("merge.yml", "squash")
-    assert steps[0]["id"] == "metadata"
-    assert re.match(r"dependabot/fetch-metadata@", steps[0]["uses"])
-    assert steps[0]["with"]["github-token"] == "${{ secrets.GITHUB_TOKEN }}"
-    merge = _step("merge.yml", "squash", "Enable auto-merge")
-    assert merge["env"]["UPDATE_TYPE"] == "${{ steps.metadata.outputs.update-type }}"
-    assert "steps.metadata" not in merge["with"]["script"]
+def test_squash_merges_any_update_without_reading_its_metadata():
+    # passing checks are the gate, whatever the update's size
+    assert [step["name"] for step in _steps("merge.yml", "squash")] == ["Enable auto-merge"]
+    assert "${{" not in _step("merge.yml", "squash", "Enable auto-merge")["with"]["script"]
 
 
 # runs the squash step's github-script body under Node, with GitHub's API answering as a branch with no
@@ -959,11 +955,11 @@ new AsyncFunction('require', 'core', 'github', 'context', body)(require, core, g
 """
 
 
-def _run_squash(tmp_path: Path, update_type: str) -> dict[str, list[Any]]:
+def _run_squash(tmp_path: Path) -> dict[str, list[Any]]:
     step = _step("merge.yml", "squash", "Enable auto-merge")
     script = tmp_path / "squash.js"
     script.write_text(step["with"]["script"], encoding="utf-8")
-    env = {**os.environ, "DISPATCH_TYPE": step["env"]["DISPATCH_TYPE"], "UPDATE_TYPE": update_type}
+    env = {**os.environ, "DISPATCH_TYPE": step["env"]["DISPATCH_TYPE"]}
     node = cast(str, shutil.which("node"))
     harness = [node, "-e", _SQUASH_HARNESS, str(script)]
     out = subprocess.run(harness, env=env, capture_output=True, text=True, check=True)
@@ -971,21 +967,11 @@ def _run_squash(tmp_path: Path, update_type: str) -> dict[str, list[Any]]:
 
 
 @needs_node
-@pytest.mark.parametrize("update_type", ["version-update:semver-minor", "version-update:semver-patch"])
-def test_squash_merges_a_minor_or_patch_update_at_the_commit_the_checks_ran_on(tmp_path: Path, update_type: str):
-    calls = _run_squash(tmp_path, update_type)
+def test_squash_merges_at_the_commit_the_checks_ran_on(tmp_path: Path):
+    calls = _run_squash(tmp_path)
     assert calls["graphql"] == [{"id": "PR_7", "oid": "abc123"}]
     assert calls["merge"] == [{"owner": "o", "repo": "r", "pull_number": 7, "merge_method": "squash", "sha": "abc123"}]
     assert len(calls["dispatch"]) == 1
-    assert calls["notice"] == []
-
-
-@needs_node
-@pytest.mark.parametrize("update_type", ["version-update:semver-major", ""])
-def test_squash_leaves_a_major_or_unclassified_update_to_a_person(tmp_path: Path, update_type: str):
-    calls = _run_squash(tmp_path, update_type)
-    assert calls["graphql"] == calls["merge"] == calls["dispatch"] == []
-    assert len(calls["notice"]) == 1
 
 
 def test_squash_enables_auto_merge_only_for_the_checked_commit():
