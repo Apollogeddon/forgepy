@@ -6,6 +6,7 @@ import itertools
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tomllib
@@ -33,6 +34,13 @@ def _bash() -> str:
 
 
 BASH = _bash()
+
+
+def _with_fakes(bin_dir: Path, script: str) -> str:
+    """The script, finding bin_dir's fakes first: Git for Windows' bash puts its own tools ahead of PATH."""
+    fakes = f'"$(cygpath -u {shlex.quote(str(bin_dir))})"' if os.name == "nt" else shlex.quote(str(bin_dir))
+    return f'PATH={fakes}:"$PATH"\n{script}'
+
 
 WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
 FIXTURES = Path(__file__).parent / "fixtures" / "legacy"
@@ -173,7 +181,7 @@ def test_names_every_step(name: str):
 
 @pytest.mark.parametrize("name", PIPELINES)
 def test_pipeline_jobs_ask_for_their_own_permissions(name: str):
-    """A job that asks for none takes its caller's grant, which only publish's assets and attest and patch do on purpose."""
+    """A job that asks for none takes its caller's grant, which only publish's assets and attest, and patch, do."""
     for job_id, job in _jobs(name).items():
         if (name, job_id) in {("publish.yml", "assets"), ("publish.yml", "attest"), ("patch.yml", "update")}:
             assert "permissions" not in job
@@ -1154,7 +1162,9 @@ def test_debian_build_refuses_an_nfpm_download_that_fails_its_checksum(tmp_path:
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "RUNNER_TEMP": str(tmp_path),
     }
-    result = subprocess.run([BASH, "-e", "-c", nfpm["run"]], env=env, capture_output=True, check=False)
+    result = subprocess.run(
+        [BASH, "-e", "-c", _with_fakes(bin_dir, nfpm["run"])], env=env, capture_output=True, check=False
+    )
     assert result.returncode != 0
     assert not installed.exists()
 
@@ -1321,7 +1331,8 @@ def _install_osv_scanner(tmp_path: Path, binary: str, sums: str, arch: str = "X6
     step = _osv_install("library.yml")
     env = {**os.environ, **step["env"], "ARCH": arch, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
     env["RUNNER_TEMP"] = str(tmp_path)
-    return subprocess.run([BASH, "-e", "-c", step["run"]], env=env, capture_output=True, text=True, check=False)
+    script = _with_fakes(bin_dir, step["run"])
+    return subprocess.run([BASH, "-e", "-c", script], env=env, capture_output=True, text=True, check=False)
 
 
 needs_sha256sum = pytest.mark.skipif(shutil.which("sha256sum") is None, reason="needs sha256sum")
