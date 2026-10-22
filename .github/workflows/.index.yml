@@ -126,10 +126,12 @@ jobs:
     uses: ./.github/workflows/library.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
-      # init scaffolds on every platform, and requires-python is >=3.11 while .python-version is 3.13
-      test_windows: windows-latest
-      test_macos: macos-latest
-      test_versions: '["3.11", "3.12"]'
+      # init scaffolds on every platform, and requires-python is >=3.11 while .python-version is 3.13, so a
+      # release is tested on each, and its run fails on any of them; a pull request runs on Linux and 3.13
+      # only, to stay cheap
+      test_windows: ${{ needs.version.outputs.new_release_published == 'true' && 'windows-latest' || '' }}
+      test_macos: ${{ needs.version.outputs.new_release_published == 'true' && 'macos-latest' || '' }}
+      test_versions: ${{ needs.version.outputs.new_release_published == 'true' && '["3.11", "3.12"]' || '' }}
     permissions:
       contents: read
       pull-requests: write

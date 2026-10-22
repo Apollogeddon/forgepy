@@ -781,17 +781,22 @@ def test_versions_stage_installs_each_version_without_leaking_it_into_the_tests(
     assert 'uv sync --locked --python "$VERSION"' in install["run"]
 
 
-def test_own_index_tests_the_tool_on_every_platform_and_supported_python():
+def _on_a_release(value: str) -> str:
+    return f"${{{{ needs.version.outputs.new_release_published == 'true' && {value} || '' }}}}"
+
+
+# a release on every platform and supported Python; a pull request on Linux and .python-version's, to stay cheap
+def test_own_index_tests_a_release_on_every_platform_and_supported_python():
     library = _load(".index.yml")["jobs"]["library"]["with"]
-    assert library["test_windows"] == "windows-latest"
-    assert library["test_macos"] == "macos-latest"
+    assert library["test_windows"] == _on_a_release("'windows-latest'")
+    assert library["test_macos"] == _on_a_release("'macos-latest'")
     root = WORKFLOWS_DIR.parent.parent
     requires = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["requires-python"]
     floor = re.fullmatch(r">=(\d+\.\d+)", requires)
     assert floor
     own = (root / ".python-version").read_text(encoding="utf-8").strip()
     minors = range(_minor(floor.group(1))[1], _minor(own)[1])
-    assert json.loads(library["test_versions"]) == [f"3.{minor}" for minor in minors]
+    assert library["test_versions"] == _on_a_release(f"'{json.dumps([f'3.{minor}' for minor in minors])}'")
 
 
 @pytest.mark.parametrize(("name", "text"), GENERATED, ids=[name for name, _ in GENERATED])
