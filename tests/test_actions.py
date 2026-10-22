@@ -22,6 +22,9 @@ from forgepy.templates import legacy as legacy_templates
 from forgepy.templates import workflows as workflow_templates
 from forgepy.utils.filesystem import MemoryFileSystem
 
+# Git for Windows' bash: a bare "bash" there finds System32's WSL launcher before anything on PATH
+BASH = str(Path(shutil.which("git") or "git").parents[1] / "bin" / "bash.exe") if os.name == "nt" else "bash"
+
 WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
 FIXTURES = Path(__file__).parent / "fixtures" / "legacy"
 # PyYAML can produce non-str keys (YAML 1.1 parses a bare `on:` mapping key as
@@ -786,7 +789,7 @@ def test_site_is_staged_under_base_path(tmp_path: Path, base_path: str, base: st
     output = tmp_path / "output"
     env = {**os.environ, "BASE_PATH": base_path, "BUILD": str(build)}
     env |= {"RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output)}
-    subprocess.run(["bash", "-e", "-c", _site_step("Stage the site for checking")["run"]], env=env, check=True)
+    subprocess.run([BASH, "-e", "-c", _site_step("Stage the site for checking")["run"]], env=env, check=True)
     outputs = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
     root = tmp_path / "site"
     # as the shell joined it, which on Windows mixes separators
@@ -1055,7 +1058,7 @@ def _run_patch_push(tmp_path: Path, working_directory: str, *, change: bool) -> 
     output.touch()
     branch = "forgepy/sync" if working_directory == "." else f"forgepy/sync-{working_directory}"
     env = {**os.environ, "GH_TOKEN": "token", "BRANCH": branch, "GITHUB_OUTPUT": str(output)}
-    subprocess.run(["bash", "-e", "-c", step["run"]], cwd=project, env=env, check=True, capture_output=True)
+    subprocess.run([BASH, "-e", "-c", step["run"]], cwd=project, env=env, check=True, capture_output=True)
     return remote, output
 
 
@@ -1138,7 +1141,7 @@ def test_debian_build_refuses_an_nfpm_download_that_fails_its_checksum(tmp_path:
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "RUNNER_TEMP": str(tmp_path),
     }
-    result = subprocess.run(["bash", "-e", "-c", nfpm["run"]], env=env, capture_output=True, check=False)
+    result = subprocess.run([BASH, "-e", "-c", nfpm["run"]], env=env, capture_output=True, check=False)
     assert result.returncode != 0
     assert not installed.exists()
 
@@ -1305,7 +1308,7 @@ def _install_osv_scanner(tmp_path: Path, binary: str, sums: str, arch: str = "X6
     step = _osv_install("library.yml")
     env = {**os.environ, **step["env"], "ARCH": arch, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
     env["RUNNER_TEMP"] = str(tmp_path)
-    return subprocess.run(["bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True, check=False)
+    return subprocess.run([BASH, "-e", "-c", step["run"]], env=env, capture_output=True, text=True, check=False)
 
 
 needs_sha256sum = pytest.mark.skipif(shutil.which("sha256sum") is None, reason="needs sha256sum")

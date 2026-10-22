@@ -20,6 +20,9 @@ from forgepy.config import DEBIAN_IMAGE, DEBIAN_PYTHON_VERSION
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# Git for Windows' bash: a bare "bash" there finds System32's WSL launcher before anything on PATH
+BASH = str(Path(shutil.which("git") or "git").parents[1] / "bin" / "bash.exe") if os.name == "nt" else "bash"
+
 pytestmark = [
     pytest.mark.slow,
     pytest.mark.skipif(shutil.which("uv") is None, reason="uv not on PATH"),
@@ -109,7 +112,7 @@ def _run_check_stages(project: Path) -> list[str]:
             guard = re.match(r"hashFiles\(format\('\{0\}/([^']+)'", step.get("if", ""))
             if guard and not list(project.glob(guard.group(1))):
                 continue
-            _run(["bash", "-e", "-c", step["run"]], cwd=project, env=env)
+            _run([BASH, "-e", "-c", step["run"]], cwd=project, env=env)
             ran.append(f"{stage} / {step['name']}")
     return ran
 
