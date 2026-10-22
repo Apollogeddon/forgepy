@@ -206,8 +206,11 @@ def _expect_wiring(caller: str, doc: YamlDoc, resolve: Callable[[str], str | Non
         for key, spec in declared.items():
             if spec.get("required"):
                 assert key in passed, f"{caller}:{job_id} misses required {key}"
-        # the pipelines only use GITHUB_TOKEN, which they get without inheriting every secret
-        assert "secrets" not in job, f"{caller}:{job_id} passes secrets"
+        # secrets go by name, never inherit, which hands every repository secret to a workflow elsewhere
+        secrets: YamlDoc | str = job.get("secrets") or {}
+        assert isinstance(secrets, dict), f"{caller}:{job_id} inherits secrets"
+        for key in secrets:
+            assert key in (call.get("secrets") or {}), f"{caller}:{job_id} passes undeclared secret {key!r}"
         # GitHub refuses the whole run when a called job asks for more than its caller grants
         grant: YamlDoc = job.get("permissions") or {}
         for called_id, called in _jobs(callee).items():
@@ -719,6 +722,34 @@ def test_version_counts_any_package_release_only_for_the_root_package():
     before_root_clause, root_clause = published.split("inputs.working_directory == '.' && ", 1)
     assert "releases_created" not in before_root_clause
     assert root_clause.startswith("(jobs.release.outputs.releases_created")
+
+
+def test_release_please_runs_as_a_github_app_only_when_one_is_set():
+    inputs = _workflow_call("version.yml")["inputs"]
+    assert inputs["app_client_id"]["default"] == ""
+    assert _workflow_call("version.yml")["secrets"]["APP_PRIVATE_KEY"]["required"] is False
+    app = _step("version.yml", "release", "Create the app's token")
+    assert app["if"] == "inputs.app_client_id != ''"
+    assert app["with"] == {"client-id": "${{ inputs.app_client_id }}", "private-key": "${{ secrets.APP_PRIVATE_KEY }}"}
+    release = _step("version.yml", "release", "Release")
+    assert release["with"]["token"] == "${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}"  # noqa: S105
+
+
+_APP_INPUTS = {"app_client_id": "${{ vars.RELEASE_APP_CLIENT_ID }}"}
+_APP_SECRETS = {"APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"}
+
+
+@pytest.mark.parametrize(("name", "text"), [(".index.yml", None), *GENERATED[:1]], ids=["own", "generated"])
+def test_version_jobs_pass_the_release_app_when_one_is_set(name: str, text: str | None):
+    version = (_load(name) if text is None else _load_text(text))["jobs"]["version"]
+    assert _APP_INPUTS.items() <= version["with"].items()
+    assert version["secrets"] == _APP_SECRETS
+
+
+# with GITHUB_TOKEN no checks start on a release pull request anyway; with an app's token they should run
+@pytest.mark.parametrize("text", [(WORKFLOWS_DIR / ".index.yml").read_text("utf-8"), *(t for _, t in GENERATED)])
+def test_checks_run_on_release_please_branches(text: str):
+    assert "release-please--" not in text
 
 
 def test_release_pull_request_requests_a_review():

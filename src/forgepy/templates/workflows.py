@@ -68,6 +68,8 @@ class PipelineJob:
     needs: list[str] = field(default_factory=list[str])
     condition: str = ""
     inputs: dict[str, str | bool] = field(default_factory=dict[str, str | bool])
+    # each by name: secrets: inherit would hand every repository secret to a workflow in another repository
+    secrets: dict[str, str] = field(default_factory=dict[str, str])
 
     def render(self) -> str:
         lines = [f"  # {line}" for line in self.comment.splitlines()]
@@ -83,6 +85,9 @@ class PipelineJob:
                 f"      {key}: {str(value).lower() if isinstance(value, bool) else value}"
                 for key, value in self.inputs.items()
             )
+        if self.secrets:
+            lines.append("    secrets:")
+            lines.extend(f"      {key}: {value}" for key, value in self.secrets.items())
         lines.append("    permissions:")
         lines.extend(f"      {key}: {value}" for key, value in self.permissions.items())
         return "\n".join(lines) + "\n"
@@ -115,9 +120,14 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
         jobs.append(
             PipelineJob(
                 id="version",
-                comment="release-please, on main",
+                comment=(
+                    "release-please, on main; with the RELEASE_APP_CLIENT_ID variable and RELEASE_APP_PRIVATE_KEY\n"
+                    "secret set, it runs as that GitHub App, so its release pull requests run the checks"
+                ),
                 condition="github.event_name != 'pull_request' && github.event_name != 'schedule'",
                 pipeline="version",
+                inputs={"app_client_id": _expr("vars.RELEASE_APP_CLIENT_ID")},
+                secrets={"APP_PRIVATE_KEY": _expr("secrets.RELEASE_APP_PRIVATE_KEY")},
                 permissions={"contents": "write", "pull-requests": "write"},
             )
         )

@@ -129,12 +129,25 @@ Outputs `new_release_published` (`'true'` or `'false'`), `version` and `tag_name
 | :--- | :--- | :--- |
 | `working_directory` | `'.'` | The package to release |
 | `reviewers` | `''` | Comma-separated logins to request a review of the release pull request from; empty means the repository's owner |
+| `app_client_id` | `''` | A GitHub App's client ID. With the `APP_PRIVATE_KEY` secret, release-please runs with the app's token; empty uses `GITHUB_TOKEN` |
+
+It takes one optional secret, `APP_PRIVATE_KEY`, the private key of the app `app_client_id` names.
 
 ### Checking a release
 
 A push to `main` runs `version` first, and only when it makes a release does `.index.yml` run the checks again, and then the publish, image push or deploy that ships what they built. So each change is checked on its pull request and once more as part of a release, not on every push.
 
-release-please tags the release before those checks run. If they fail, the tag and the GitHub release exist with nothing published, and need putting right by hand. The generated `.index.yml` therefore checks release pull requests too, so the release is checked with exactly what its merge ships. release-please opens them with `GITHUB_TOKEN`, which doesn't start workflow runs, so approve the run (or push to the branch) before merging one.
+release-please tags the release before those checks run. If they fail, the tag and the GitHub release exist with nothing published, and need putting right by hand. The generated `.index.yml` therefore checks release pull requests too, so the release is checked with exactly what its merge ships. release-please opens them with `GITHUB_TOKEN` by default, which doesn't start workflow runs, so approve the run (or push to the branch) before merging one, or set up a GitHub App as below.
+
+### Release pull requests that run the checks
+
+A pull request opened with `GITHUB_TOKEN` starts no workflows, so a release pull request's checks never run on their own. One opened with a GitHub App's token runs them. The generated `version` job passes the app as `app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}` and the secret `APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}`, both empty until you set them, so release-please uses `GITHUB_TOKEN` by default. To use an app:
+
+1. [Create a GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app) under your account or organisation, with no webhook and the repository permissions **Contents: Read and write** and **Pull requests: Read and write**. Note its client ID, and generate a private key.
+2. Install the app on the repository.
+3. In the repository's **Settings → Secrets and variables → Actions**, add the variable `RELEASE_APP_CLIENT_ID` with the client ID, and the secret `RELEASE_APP_PRIVATE_KEY` with the private key's contents.
+
+The `release` stage then creates a short-lived token for the app with [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token), and release-please opens, updates and tags as the app.
 
 With **Require branches to be up to date before merging** turned on, every pull request is checked again before it merges; skipped jobs count as passed for required status checks.
 

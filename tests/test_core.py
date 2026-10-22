@@ -413,12 +413,12 @@ def test_init_generates_least_privilege_ci_that_never_cancels_main(cfg: InitConf
     # a run outside a pull request has a group of its own, so one on main is never cancelled
     assert "github.head_ref || github.run_id" in workflow["concurrency"]["group"]
     for name, job in workflow["jobs"].items():
-        # the called workflows only use GITHUB_TOKEN, which they get without inheriting every secret
-        assert "secrets" not in job, f"{name} passes secrets"
+        # secrets go by name, never inherit, and only the release app's key at that
+        assert job.get("secrets", {}) in ({}, {"APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"}), name
         # only PyPI Trusted Publishing and GitHub Pages need an OIDC token
         if name not in ("publish", "pages"):
             assert "id-token" not in job["permissions"], f"{name} asks for id-token"
-    # vulnerable packages are upgraded on main, weekly, on a manual run and after a Dependabot merge
+    # forgepy's files are refreshed through a pull request, weekly, on a manual run and after a Dependabot merge
     assert workflow["jobs"]["patch"]["uses"] == f"{FORGEPY}/patch.yml@main"
 
 
