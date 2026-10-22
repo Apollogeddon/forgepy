@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import itertools
 import json
 import os
@@ -925,6 +926,9 @@ def test_osv_scan_never_swallows_the_result_and_is_the_same_in_every_check_pipel
     scan = _step(name, "scan", "Scan with OSV")
     report = _step(name, "scan", "Report OSV findings")
     assert "|| true" not in scan["run"]
+    assert '"$RUNNER_TEMP/osv-scanner/osv-scanner" scan' in scan["run"]
+    names = [step.get("name") for step in _steps(name, "scan")]
+    assert names.index("Install OSV-Scanner") == names.index("Scan with OSV") - 1
     assert report["env"]["OSV_ENFORCE"] == "${{ github.event_name == 'pull_request' }}"
     assert report == _step("library.yml", "scan", "Report OSV findings")
 
@@ -955,12 +959,81 @@ def test_osv_report_uses_the_advisory_rating_without_a_score(tmp_path: Path):
 
 
 @needs_node
-@pytest.mark.parametrize(
-    ("status", "results", "warned"), [(0, [], False), (128, [], False), (127, [], True), (1, None, True)]
-)
-def test_osv_report_passes_when_there_is_nothing_to_report(
-    tmp_path: Path, status: int, results: list[YamlDoc] | None, *, warned: bool
-):
+@pytest.mark.parametrize(("status", "results"), [(0, []), (128, [])])
+def test_osv_report_passes_when_there_is_nothing_to_report(tmp_path: Path, status: int, results: list[YamlDoc]):
     calls = _run_osv_report(tmp_path, status, results, enforce=True)
     assert calls["setFailed"] == []
-    assert bool(calls["warning"]) is warned
+    assert calls["warning"] == []
+
+
+# a pull request mustn't pass with its dependencies unchecked; elsewhere OSV's API being down mustn't stop a release
+@needs_node
+@pytest.mark.parametrize(("status", "results"), [(127, []), (1, None)])
+@pytest.mark.parametrize("enforce", [True, False])
+def test_osv_report_fails_only_a_pull_request_it_couldnt_scan(
+    tmp_path: Path, status: int, results: list[YamlDoc] | None, *, enforce: bool
+):
+    calls = _run_osv_report(tmp_path, status, results, enforce=enforce)
+    assert len(calls["setFailed"]) == (1 if enforce else 0)
+    assert len(calls["warning"]) == (0 if enforce else 1)
+
+
+_OSV_INSTALLS = [name for name in FILES if "- name: Install OSV-Scanner" in (WORKFLOWS_DIR / name).read_text("utf-8")]
+
+
+def _osv_install(name: str) -> YamlDoc:
+    job = next(job for job in _jobs(name) if any(s.get("name") == "Install OSV-Scanner" for s in _steps(name, job)))
+    return _step(name, job, "Install OSV-Scanner")
+
+
+def test_every_check_pipeline_installs_osv_scanner_the_same_way():
+    assert set(CHECKS) <= set(_OSV_INSTALLS)
+    for name in _OSV_INSTALLS:
+        assert _osv_install(name) == _osv_install("library.yml"), name
+        assert "releases/latest" not in (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
+
+
+def test_osv_scanner_is_a_pinned_release():
+    assert re.fullmatch(r"v\d+\.\d+\.\d+", _osv_install("library.yml")["env"]["OSV_SCANNER_VERSION"])
+
+
+def _install_osv_scanner(tmp_path: Path, binary: str, sums: str, arch: str = "X64") -> subprocess.CompletedProcess[str]:
+    """Runs the install step with a curl that serves `binary` and the checksum file `sums`."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    served = tmp_path / "served"
+    served.mkdir()
+    (served / "osv-scanner_linux_amd64").write_text(binary, encoding="utf-8")
+    (served / "osv-scanner_SHA256SUMS").write_text(sums, encoding="utf-8")
+    curl = bin_dir / "curl"
+    curl.write_text(f'#!/bin/sh\nfor last; do :; done\ncp "{served}/${{last##*/}}" .\n', encoding="utf-8")
+    curl.chmod(0o755)
+    step = _osv_install("library.yml")
+    env = {**os.environ, **step["env"], "ARCH": arch, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    env["RUNNER_TEMP"] = str(tmp_path)
+    return subprocess.run(["bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True, check=False)
+
+
+needs_sha256sum = pytest.mark.skipif(shutil.which("sha256sum") is None, reason="needs sha256sum")
+
+
+@needs_sha256sum
+def test_osv_scanner_installs_a_download_that_matches_its_checksum(tmp_path: Path):
+    digest = hashlib.sha256(b"scanner").hexdigest()
+    result = _install_osv_scanner(tmp_path, "scanner", f"{digest}  osv-scanner_linux_amd64\n{'0' * 64}  other\n")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert os.access(tmp_path / "osv-scanner" / "osv-scanner", os.X_OK)
+
+
+@needs_sha256sum
+def test_osv_scanner_refuses_a_download_that_fails_its_checksum(tmp_path: Path):
+    digest = hashlib.sha256(b"scanner").hexdigest()
+    result = _install_osv_scanner(tmp_path, "tampered", f"{digest}  osv-scanner_linux_amd64\n")
+    assert result.returncode != 0
+    assert not (tmp_path / "osv-scanner" / "osv-scanner").exists()
+
+
+def test_osv_scanner_refuses_a_runner_it_has_no_build_for(tmp_path: Path):
+    result = _install_osv_scanner(tmp_path, "scanner", "", arch="X86")
+    assert result.returncode != 0
+    assert "no Linux build for X86" in result.stdout
