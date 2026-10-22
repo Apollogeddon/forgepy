@@ -444,7 +444,8 @@ jobs:
           cp -R "$BUILD/." "$root$base"
           remap=''
           if [ -n "$origin" ]; then
-            remap="--remap '^${origin//./\\.}/ file://$root/'"
+            # sed rather than ${origin//./\\.}, whose backslash differs between bash builds
+            remap="--remap '^$(printf '%s' "$origin" | sed 's/\./\\./g')/ file://$root/'"
           fi
           {
             echo "root=$root"
