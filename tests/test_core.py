@@ -609,6 +609,16 @@ def test_init_writes_a_gitignore_once_and_keeps_the_projects_own():
     assert fs.read_text(PROJECT / ".gitignore") == "custom\n"
 
 
+# LF on every platform, so a Windows checkout reads the same; a project's own rules are never replaced
+def test_init_writes_a_gitattributes_once_and_keeps_the_projects_own():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    assert fs.read_text(PROJECT / ".gitattributes") == "* text=auto eol=lf\n"
+    fs.write_text(PROJECT / ".gitattributes", "*.psd filter=lfs diff=lfs merge=lfs -text\n")
+    init(InitConfig(target=PROJECT, force=True), fs)
+    assert fs.read_text(PROJECT / ".gitattributes") == "*.psd filter=lfs diff=lfs merge=lfs -text\n"
+
+
 def _ruff_target(fs: MemoryFileSystem) -> str:
     return tomlkit.parse(fs.read_text(PROJECT / "ruff.toml"))["target-version"]
 

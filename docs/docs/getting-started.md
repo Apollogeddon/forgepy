@@ -159,6 +159,7 @@ A default `forgepy init` (backend) produces:
 │   └── __main__.py
 ├── tests/test_placeholder.py
 ├── .editorconfig
+├── .gitattributes              # LF on every platform
 ├── .gitignore
 ├── .pre-commit-config.yaml
 ├── .python-version
