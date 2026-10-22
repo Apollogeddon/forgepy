@@ -36,6 +36,12 @@ def _bash() -> str:
 BASH = _bash()
 
 
+def _run_step(script: str, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    """Runs a step's script with bash, which reads it on stdin: Git for Windows' bash re-parses its command line,
+    dropping every backslash from a -c script."""
+    return subprocess.run([BASH, "-e", "-s"], input=script, text=True, encoding="utf-8", **kwargs)  # noqa: PLW1510
+
+
 def _with_fakes(bin_dir: Path, script: str) -> str:
     """The script, finding bin_dir's fakes first: Git for Windows' bash puts its own tools ahead of PATH."""
     fakes = f'"$(cygpath -u {shlex.quote(str(bin_dir))})"' if os.name == "nt" else shlex.quote(str(bin_dir))
@@ -798,7 +804,7 @@ def test_site_is_staged_under_base_path(tmp_path: Path, base_path: str, base: st
     output = tmp_path / "output"
     env = {**os.environ, "BASE_PATH": base_path, "BUILD": str(build)}
     env |= {"RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output)}
-    subprocess.run([BASH, "-e", "-c", _site_step("Stage the site for checking")["run"]], env=env, check=True)
+    _run_step(_site_step("Stage the site for checking")["run"], env=env, check=True)
     outputs = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
     root = tmp_path / "site"
     # as the shell joined it, which on Windows mixes separators
@@ -1057,7 +1063,7 @@ def _run_patch_push(tmp_path: Path, working_directory: str, *, change: bool) -> 
     output.touch()
     branch = "forgepy/sync" if working_directory == "." else f"forgepy/sync-{working_directory}"
     env = {**os.environ, "GH_TOKEN": "token", "BRANCH": branch, "GITHUB_OUTPUT": str(output)}
-    subprocess.run([BASH, "-e", "-c", step["run"]], cwd=project, env=env, check=True, capture_output=True)
+    _run_step(step["run"], cwd=project, env=env, check=True, capture_output=True)
     return remote, output
 
 
@@ -1140,9 +1146,7 @@ def test_debian_build_refuses_an_nfpm_download_that_fails_its_checksum(tmp_path:
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "RUNNER_TEMP": str(tmp_path),
     }
-    result = subprocess.run(
-        [BASH, "-e", "-c", _with_fakes(bin_dir, nfpm["run"])], env=env, capture_output=True, check=False
-    )
+    result = _run_step(_with_fakes(bin_dir, nfpm["run"]), env=env, capture_output=True, check=False)
     assert result.returncode != 0
     assert not installed.exists()
 
@@ -1310,7 +1314,7 @@ def _install_osv_scanner(tmp_path: Path, binary: str, sums: str, arch: str = "X6
     env = {**os.environ, **step["env"], "ARCH": arch, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
     env["RUNNER_TEMP"] = str(tmp_path)
     script = _with_fakes(bin_dir, step["run"])
-    return subprocess.run([BASH, "-e", "-c", script], env=env, capture_output=True, text=True, check=False)
+    return _run_step(script, env=env, capture_output=True, check=False)
 
 
 needs_sha256sum = pytest.mark.skipif(shutil.which("sha256sum") is None, reason="needs sha256sum")
