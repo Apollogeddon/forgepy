@@ -48,7 +48,8 @@ on:
 # GitHub checks a called workflow's permissions against its caller's before running any of it, even a job
 # that will be skipped, so a caller grants the union of what the stages ask for. package, which holds the
 # publish token, asks for exactly what it needs; assets and attest ask for nothing and take the caller's grant,
-# so a caller grants contents: write, or attestations: write, only for the stage it turns on.
+# so a caller grants contents: write, or attestations: write, only for the stage it turns on. That's also why
+# there's no workflow-level permissions: {}, which would leave assets and attest with nothing.
 
 jobs:
   package:
@@ -67,16 +68,16 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Download the build
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ inputs.working_directory }}/dist
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           # no dependency cache in a job holding a publish token, as a poisoned cache could ship
           enable-cache: false
@@ -94,13 +95,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Download the assets
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.assets }}
           path: ${{ runner.temp }}/assets
       # Through the API rather than the gh CLI, which a self-hosted runner may not have
       - name: Upload the assets to the release
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           TAG_NAME: ${{ inputs.tag_name }}
           ASSETS: ${{ runner.temp }}/assets
@@ -139,17 +140,17 @@ jobs:
     steps:
       - name: Download the build
         if: needs.package.result == 'success'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ runner.temp }}/attest
       - name: Download the assets
         if: needs.assets.result == 'success'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ inputs.assets }}
           path: ${{ runner.temp }}/attest
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/attest/*

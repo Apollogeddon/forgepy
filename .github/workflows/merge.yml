@@ -21,6 +21,9 @@ on:
         type: boolean
         default: false
 
+# nothing by default: every job asks for what it needs
+permissions: {}
+
 jobs:
   # CODEOWNERS only requests reviews in a private repository on a paid plan, so Dependabot's pull
   # requests ask for one here instead, on any plan, and whether the checks passed or not
@@ -33,7 +36,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Request a review
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PULL_REQUEST: ''
           REVIEWERS: ${{ inputs.reviewers }}
@@ -74,12 +77,12 @@ jobs:
       # what the update changes, read from Dependabot's commit, so only minor and patch updates merge themselves
       - name: Read the update
         id: metadata
-        uses: dependabot/fetch-metadata@v3
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       # Through the API rather than the gh CLI, which a self-hosted runner may not have
       - name: Enable auto-merge
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           DISPATCH_TYPE: auto-merged
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}

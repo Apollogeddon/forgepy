@@ -48,9 +48,7 @@ CODEOWNERS = """\
 """
 
 
-def _ecosystem(
-    name: str, prefix: str, group: str, update_types: tuple[str, ...] = (), ignore: tuple[str, ...] = ()
-) -> str:
+def _ecosystem(name: str, prefix: str, group: str, update_types: tuple[str, ...] = ()) -> str:
     lines = [
         f'  - package-ecosystem: "{name}"',
         '    directory: "/"',
@@ -65,8 +63,6 @@ def _ecosystem(
         # only these update types are grouped; others get a pull request each
         lines += ["        update-types:", *(f'          - "{t}"' for t in update_types)]
     lines += ["    commit-message:", f'      prefix: "{prefix}"']
-    if ignore:
-        lines += ["    ignore:", *(f'      - dependency-name: "{d}"' for d in ignore)]
     lines += ["    cooldown:", "      default-days: 3"]
     return "\n".join(lines)
 
@@ -74,8 +70,8 @@ def _ecosystem(
 def dependabot(*, docker: bool) -> str:
     ecosystems = [
         _ecosystem("uv", "fix(deps)", "dependencies", ("minor", "patch")),
-        # the reusable workflows are called at @main, which has no versions to propose
-        _ecosystem("github-actions", "chore(ci)", "actions", ignore=("apollogeddon/forgepy",)),
+        # the actions, and the forgepy release tag .index.yml calls the pipelines at
+        _ecosystem("github-actions", "chore(ci)", "actions"),
     ]
     if docker:
         ecosystems.append(_ecosystem("docker", "fix(deps)", "docker", ("minor", "patch")))

@@ -87,10 +87,10 @@ _RUNNER_STEPS = {"Resolve the Python version", "Run the pre-build command"}
 
 def _run_check_stages(project: Path) -> list[str]:
     """Runs what the generated .index.yml's check pipeline runs: its lint, test and build stages' commands,
-    read from this repository's pipeline with the inputs .index.yml passes, as @main serves them."""
+    read from this repository's pipeline with the inputs .index.yml passes, as this checkout serves them."""
     index = yaml.safe_load((project / ".github/workflows/.index.yml").read_text(encoding="utf-8"))
     job = next(job for name, job in index["jobs"].items() if name in ("library", "service", "website"))
-    match = re.fullmatch(r"apollogeddon/forgepy/\.github/workflows/([\w-]+\.yml)@main", job["uses"])
+    match = re.fullmatch(r"apollogeddon/forgepy/\.github/workflows/([\w-]+\.yml)@(?:main|v[\d.]+)", job["uses"])
     assert match, job["uses"]
     pipeline = yaml.safe_load((REPO_ROOT / ".github/workflows" / match.group(1)).read_text(encoding="utf-8"))
     declared = pipeline[True]["workflow_call"]["inputs"]

@@ -241,7 +241,7 @@ The website Dockerfile builds the static site once on the build host and only th
 
 *A refresh of the files Forge.py manages, proposed as a pull request, weekly, on a manual run and after a Dependabot merge.*
 
-After a Dependabot merge, the `auto-merged` dispatch runs it straight away on the updated `main`, without waiting for the week. Dependabot doesn't propose Forge.py upgrades: a project moves to a new Forge.py release by changing the tag in `[tool.uv.sources]`, then running `uv lock` and `forgepy sync` (see [Upgrading](../configuration.md#upgrading)).
+After a Dependabot merge, the `auto-merged` dispatch runs it straight away on the updated `main`, without waiting for the week. Dependabot proposes new Forge.py releases for `.index.yml`'s pipelines, but not for the tool itself: a project moves to a new Forge.py release by changing the tag in `[tool.uv.sources]`, then running `uv lock` and `forgepy sync` (see [Upgrading](../configuration.md#upgrading)).
 
 1. **`update`**: On `main`, when `working_directory` has a `.forgepy/` directory, runs `forgepy sync`, so a project moved to a new tag without `forgepy sync`, or with `.forgepy/` edited by hand, doesn't leave `lint`'s `forgepy sync --check` failing. It never moves the tag. When anything changed, it commits it as `chore(deps): refresh the files forgepy manages`, force-pushes the commit to the `forgepy/sync` branch (`forgepy/sync-<working_directory>` for a project in a subdirectory), and opens a pull request for it unless one is open already. It never pushes to `main`, and the checkout keeps no credentials: only the push gets the token.
 

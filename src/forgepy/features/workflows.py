@@ -4,9 +4,10 @@ import re
 from dataclasses import replace
 from typing import ClassVar
 
-from forgepy import console
+from forgepy import __version__, console
 from forgepy import pyproject as pj
 from forgepy.config import InitConfig
+from forgepy.features.base import release_tag
 from forgepy.features.feature import Feature, FeatureContext, create_file, remove_file
 from forgepy.templates import legacy as legacy_templates
 from forgepy.templates import repository as repository_templates
@@ -88,6 +89,7 @@ class WorkflowFeature(Feature):
                 testing=cfg.testing,
                 versioning=cfg.versioning,
                 build=not cfg.jython,
+                ref=release_tag(__version__) or "main",
             )
         )
         # only once .index.yml is written: a kept or failed one would leave the project with no CI, or the old one

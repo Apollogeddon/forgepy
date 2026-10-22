@@ -181,6 +181,41 @@ def test_workflows_and_every_generated_index_pass_actionlint(tmp_path: Path):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+# every action at a commit, which a moved tag can't change, with the release it is as a comment for Dependabot
+_USES = re.compile(r"^\s*(?:-\s+)?uses:\s+(\S+)(.*)$", re.MULTILINE)
+
+
+@pytest.mark.parametrize("name", FILES)
+def test_pins_every_action_to_a_commit(name: str):
+    for ref, rest in _USES.findall((WORKFLOWS_DIR / name).read_text(encoding="utf-8")):
+        if ref.startswith("./"):
+            continue
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+(/[\w./-]+)?@[0-9a-f]{40}", ref), f"{name}: {ref}"
+        assert re.fullmatch(r" # v\d+\.\d+\.\d+", rest), f"{name}: {ref} has no version comment"
+
+
+# nothing a job doesn't ask for; publish's assets and attest take their caller's grant on purpose
+@pytest.mark.parametrize("name", FILES)
+def test_grants_nothing_by_default(name: str):
+    doc = _load(name)
+    if name == "publish.yml":
+        assert "permissions" not in doc
+    else:
+        assert doc["permissions"] == {}
+
+
+@pytest.mark.parametrize(("name", "text"), GENERATED, ids=[name for name, _ in GENERATED])
+def test_generated_index_grants_nothing_by_default(name: str, text: str):  # noqa: ARG001
+    assert _load_text(text)["permissions"] == {}
+
+
+def test_generated_index_calls_the_pipelines_at_the_ref_it_is_given():
+    cfg = workflow_templates.IndexWorkflowOptions(mode="library", ref="v1.2.3")
+    uses = [job["uses"] for job in _load_text(workflow_templates.index_workflow(cfg))["jobs"].values()]
+    assert uses
+    assert all(use.endswith(".yml@v1.2.3") for use in uses)
+
+
 # --- wiring: a caller's inputs, secrets, outputs and permissions match what it calls -------------
 
 _LEVELS = {"none": 0, "read": 1, "write": 2}
@@ -230,8 +265,9 @@ def _local(uses: str) -> str | None:
     return uses.removeprefix("./.github/workflows/") if uses.startswith("./.github/workflows/") else None
 
 
-def _at_main(uses: str) -> str | None:
-    match = re.fullmatch(r"apollogeddon/forgepy/\.github/workflows/([\w-]+\.yml)@main", uses)
+def _at_a_release(uses: str) -> str | None:
+    """A call to forgepy's pipelines at a release tag, or at main from a build that isn't a release."""
+    match = re.fullmatch(r"apollogeddon/forgepy/\.github/workflows/([\w-]+\.yml)@(?:main|v\d+\.\d+\.\d+)", uses)
     return match.group(1) if match else None
 
 
@@ -244,7 +280,10 @@ def _merge_dispatch_type() -> str:
     return cast(str, _dispatch_step()["env"]["DISPATCH_TYPE"])
 
 
-_CONCURRENCY = {"group": "${{ github.workflow }}-${{ github.head_ref || github.run_id }}", "cancel-in-progress": True}
+_CONCURRENCY = {
+    "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}",
+    "cancel-in-progress": True,
+}
 _PATCH_EVENTS = (
     "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
     " || github.event_name == 'repository_dispatch'"
@@ -313,10 +352,10 @@ class TestOwnIndex:
 
 @pytest.mark.parametrize(("name", "text"), GENERATED, ids=[name for name, _ in GENERATED])
 class TestGeneratedIndex:
-    def test_calls_forgepys_pipelines_at_main_with_inputs_they_declare_and_the_permissions_they_need(
+    def test_calls_forgepys_pipelines_at_a_release_with_inputs_they_declare_and_the_permissions_they_need(
         self, name: str, text: str
     ):
-        _expect_wiring(f"generated {name}", _load_text(text), _at_main)
+        _expect_wiring(f"generated {name}", _load_text(text), _at_a_release)
 
     def test_listens_for_the_merge_pipelines_dispatch(self, name: str, text: str):  # noqa: ARG002
         assert _on(_load_text(text))["repository_dispatch"]["types"] == [_merge_dispatch_type()]
@@ -548,7 +587,7 @@ jobs:
 """)
     job = caller["jobs"]["library"]
     job["name"] = re.sub(r"\$\{\{ matrix\.api \}\}", "8.1", job["name"])
-    _expect_wiring("matrix caller", caller, _at_main)
+    _expect_wiring("matrix caller", caller, _at_a_release)
 
 
 @pytest.mark.parametrize("name", CHECKS)
@@ -601,7 +640,7 @@ def test_pre_build_command_runs_before_installing(name: str, job: str):
     assert _workflow_call(name)["secrets"]["GH_TOKEN"]["required"] is False
 
 
-_SETUP_PYTHON = re.compile(r"uses: actions/setup-python@\S+\n\s+with:\n\s+python-version: (.+)")
+_SETUP_PYTHON = re.compile(r"uses: actions/setup-python@\S+(?: #[^\n]*)?\n\s+with:\n\s+python-version: (.+)")
 _MATRIX_PYTHON = "${{ matrix.version }}"
 
 
@@ -723,7 +762,7 @@ def test_site_checks_only_check_what_is_asked():
 
 def test_link_check_is_internal_unless_asked():
     step = _site_step("Check links")
-    assert re.fullmatch(r"lycheeverse/lychee-action@v\d+", step["uses"])
+    assert re.fullmatch(r"lycheeverse/lychee-action@[0-9a-f]{40}", step["uses"])
     assert "${{ !inputs.check_external_links && '--offline' || '' }}" in step["with"]["args"]
     assert "--root-dir '${{ steps.site.outputs.root }}'" in step["with"]["args"]
     assert step["with"]["fail"] is True
@@ -799,7 +838,12 @@ def test_release_please_runs_as_a_github_app_only_when_one_is_set():
     assert _workflow_call("version.yml")["secrets"]["APP_PRIVATE_KEY"]["required"] is False
     app = _step("version.yml", "release", "Create the app's token")
     assert app["if"] == "inputs.app_client_id != ''"
-    assert app["with"] == {"client-id": "${{ inputs.app_client_id }}", "private-key": "${{ secrets.APP_PRIVATE_KEY }}"}
+    assert app["with"] == {
+        "client-id": "${{ inputs.app_client_id }}",
+        "private-key": "${{ secrets.APP_PRIVATE_KEY }}",
+        "permission-contents": "write",
+        "permission-pull-requests": "write",
+    }
     release = _step("version.yml", "release", "Release")
     assert release["with"]["token"] == "${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}"  # noqa: S105
 
@@ -1063,7 +1107,7 @@ def test_debian_build_installs_its_tools_pinned_and_verified():
     runs = "\n".join(str(step.get("run", "")) for step in steps)
     assert not re.search(r"\|\s*(ba)?sh\b", runs)
     assert "releases/latest" not in runs
-    assert any(str(step.get("uses", "")).startswith("astral-sh/setup-uv@v") for step in steps)
+    assert any(str(step.get("uses", "")).startswith("astral-sh/setup-uv@") for step in steps)
     nfpm = _step("debian.yml", "build", "Install nfpm")
     assert re.fullmatch(r"\d+\.\d+\.\d+", nfpm["env"]["NFPM_VERSION"])
     assert re.fullmatch(r"[0-9a-f]{64}", nfpm["env"]["NFPM_SHA256"])

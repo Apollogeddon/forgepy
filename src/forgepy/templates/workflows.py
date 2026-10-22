@@ -33,8 +33,11 @@ on:
 concurrency:
   # a pull request's newer run replaces its older one; every other run has a group of its own, so a run on
   # main, running or queued, is never cancelled and a release is never created without being published
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
+
+# nothing by default: each job grants its pipeline only what that needs
+permissions: {}
 
 jobs:
 """
@@ -57,6 +60,8 @@ class IndexWorkflowOptions:
     versioning: bool = True
     # a --jython project's scripts are deployed as they are, so there's nothing to build
     build: bool = True
+    # the forgepy release tag the pipelines are called at, which Dependabot moves; main for a build that isn't one
+    ref: str = "main"
 
 
 @dataclass
@@ -71,14 +76,14 @@ class PipelineJob:
     # each by name: secrets: inherit would hand every repository secret to a workflow in another repository
     secrets: dict[str, str] = field(default_factory=dict[str, str])
 
-    def render(self) -> str:
+    def render(self, ref: str) -> str:
         lines = [f"  # {line}" for line in self.comment.splitlines()]
         lines.append(f"  {self.id}:")
         if self.needs:
             lines.append(f"    needs: {self.needs[0] if len(self.needs) == 1 else '[' + ', '.join(self.needs) + ']'}")
         if self.condition:
             lines.append(f"    if: {_expr(self.condition)}")
-        lines.append(f"    uses: {FORGEPY_WORKFLOWS}/{self.pipeline}.yml@main")
+        lines.append(f"    uses: {FORGEPY_WORKFLOWS}/{self.pipeline}.yml@{ref}")
         if self.inputs:
             lines.append("    with:")
             lines.extend(
@@ -258,7 +263,7 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
         )
     )
 
-    return _HEADER + "\n".join(job.render() for job in jobs)
+    return _HEADER + "\n".join(job.render(cfg.ref) for job in jobs)
 
 
 _CALLS_FORGEPY = re.compile(r"apollogeddon/forgepy/\.github/workflows/", re.IGNORECASE)

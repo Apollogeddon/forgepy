@@ -49,7 +49,7 @@ uv sync
 uv run forgepy sync
 ```
 
-`uv lock --upgrade-package forgepy` doesn't move past the tag. Dependabot doesn't look up newer tags on a Git remote, so it doesn't propose Forge.py upgrades. `forgepy sync` never moves the tag.
+`uv lock --upgrade-package forgepy` doesn't move past the tag, and Dependabot doesn't look up newer tags on a Git remote, so it doesn't move it either. It does propose a new release for `.github/workflows/.index.yml`, which calls Forge.py's pipelines at the release tag that ran `init`: when it does, move the `[tool.uv.sources]` tag to the same release in that pull request, as above, so the tool and its pipelines stay in step. `forgepy sync` never moves the tag.
 
 `forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and CI's `lint` stage all run it, so a stale snapshot fails the checks. The `patch` pipeline, weekly, on a manual run and after a Dependabot merge, runs `forgepy sync` and proposes what it refreshes as a pull request from the `forgepy/sync` branch.
 
@@ -206,7 +206,7 @@ So moving a project to another version is one edit to `.python-version`, with `r
 | :--- | :--- |
 | `.gitignore` | Ignores what uv, the generated tasks and the `.deb` build write: `.venv/`, `__pycache__/`, `dist/`, test and coverage reports, tool caches and `*.deb` |
 | `.editorconfig` | LF line endings, UTF-8 and 120 columns, with 4-space Python and 2-space everything else, matching the Ruff config |
-| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The `merge` pipeline requests your review on them and squash-merges minor and patch updates once CI passes; majors wait for you. Forge.py itself isn't among them: see [Upgrading](#upgrading). |
+| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The `merge` pipeline requests your review on them and squash-merges minor and patch updates once CI passes; majors wait for you. The Forge.py release `.index.yml` calls the pipelines at is among them, but not the tool in `[tool.uv.sources]`: see [Upgrading](#upgrading). |
 | `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |
 
 The `CODEOWNERS` owner is the GitHub account in a `[project.urls]` entry of `pyproject.toml` or, failing that, the `origin` remote. A project with neither gets no `CODEOWNERS`; run `init` again once it has a GitHub remote.

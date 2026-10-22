@@ -80,6 +80,9 @@ on:
         description: "A token pre_build_command can use, as GH_TOKEN"
         required: false
 
+# nothing by default: every job asks for what it needs
+permissions: {}
+
 jobs:
   lint:
     name: lint
@@ -92,12 +95,12 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
       # the input if set, else the project's .python-version, else forgepy's default
@@ -112,7 +115,7 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ steps.python.outputs.version }}
       # generates what the install, checks or build need, e.g. content made by another tool
@@ -156,21 +159,21 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
           fetch-depth: 0
       - name: Scan with Gitleaks
         if: inputs.enable_secrets
-        uses: gitleaks/gitleaks-action@v3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # the vulnerabilities and licences a pull request's dependency changes bring in; private repositories
       # need GitHub Code Security for it
       - name: Review the dependency changes
         if: github.event_name == 'pull_request' && github.event.repository.private == false
-        uses: actions/dependency-review-action@v5
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
       # a pinned release, checked against the checksums it was published with
@@ -205,7 +208,7 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
           rm -rf "$RUNNER_TEMP/osv-scanner"
       - name: Report OSV findings
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           OSV_STATUS: ${{ steps.osv.outputs.status }}
           OSV_REPORT: ${{ runner.temp }}/osv.json
@@ -280,12 +283,12 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
       # the input if set, else the project's .python-version, else forgepy's default
@@ -300,7 +303,7 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ steps.python.outputs.version }}
       # generates what the install, checks or build need, e.g. content made by another tool
@@ -321,7 +324,7 @@ jobs:
         run: uv run pytest
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ inputs.artifact_name }}
           path: |
@@ -344,12 +347,12 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
       # the input if set, else the project's .python-version, else forgepy's default
@@ -364,7 +367,7 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ steps.python.outputs.version }}
       - name: Set the runner's environment
@@ -404,12 +407,12 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
       # the input if set, else the project's .python-version, else forgepy's default
@@ -424,7 +427,7 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ steps.python.outputs.version }}
       - name: Set the runner's environment
@@ -467,16 +470,16 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.version }}
       # generates what the install, checks or build need, e.g. content made by another tool
@@ -513,12 +516,12 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
       # the input if set, else the project's .python-version, else forgepy's default
@@ -533,7 +536,7 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ steps.python.outputs.version }}
       # generates what the install, checks or build need, e.g. content made by another tool
@@ -555,7 +558,7 @@ jobs:
           BUILD_COMMAND: ${{ inputs.build_command }}
         run: bash -e -c "$BUILD_COMMAND"
       - name: Upload the build
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ inputs.working_directory }}/dist
