@@ -30,6 +30,7 @@ The three share their first four stages, job for job:
     ```
 
 3. **`test`**: `uv sync --locked` and `pytest` (skip with `run_tests: false`), with the coverage and JUnit reports uploaded as `coverage-<artifact_name>`. *(Needs: lint, scan)*
+   `library.yml` and `service.yml` can run the tests on more platforms and Python versions too, without uploading coverage: **`test (windows)`** and **`test (macos)`** with `test_windows` and `test_macos`, and **`test (<version>)`**, one per version, with `test_versions`. Each is off by default, and the generated `.index.yml` leaves them off, as a private repository's Windows and macOS minutes count double and ten times. Forge.py's own CI turns them all on. *(Needs: lint, scan)*
 4. **`build`**: Runs `build_command` (`uv build`, or `uv run zensical build` in `website.yml`) and uploads `dist/` as the `artifact_name` artifact. `library.yml` and `service.yml` skip it with `run_build: false`, which `forgepy init --jython` sets. *(Needs: lint, scan; runs alongside test)*
 
 `website.yml` adds:
@@ -49,6 +50,9 @@ The three share their first four stages, job for job:
 | `artifact_name` | `'dist'` | Name of the build artifact, which `publish` and `pages` download. A matrix gives each leg its own |
 | `ref` | `''` | Commit, branch or tag to check and build; empty means the commit that triggered the run |
 | `pre_build_command` | `''` | Shell command run in `working_directory` before `uv sync`, in every stage that installs |
+| `test_windows` | `''` | Run the tests on Windows too: a runner label, such as `windows-latest`, or a JSON object `{"runs_on", "env"}` whose `env` is set for the tests. Empty skips it. Not in `website.yml` |
+| `test_macos` | `''` | The same, on macOS, such as `macos-latest`. Not in `website.yml` |
+| `test_versions` | `''` | Run the tests on these Python versions too, on Linux: a JSON array, such as `'["3.11", "3.12"]'`. Empty skips it. Not in `website.yml` |
 
 `website.yml` also takes:
 

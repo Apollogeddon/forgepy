@@ -634,9 +634,13 @@ def test_init_debian_depends_on_the_python_the_venv_was_built_with(tmp_path: Pat
     (tmp_path / ".venv/pyvenv.cfg").write_text("home = /usr/bin\nversion_info = 3.13.5\n")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    nfpm = bin_dir / "nfpm"
-    nfpm.write_text('#!/bin/sh\necho "$VERSION $PYTHON_MINOR $PYTHON_NEXT_MINOR" > stamped\n')
-    nfpm.chmod(0o755)
+    # a stand-in Windows can run too, as shutil.which only finds a file with a PATHEXT extension there
+    if os.name == "nt":
+        (bin_dir / "nfpm.bat").write_text("@echo %VERSION% %PYTHON_MINOR% %PYTHON_NEXT_MINOR%> stamped\n")
+    else:
+        nfpm = bin_dir / "nfpm"
+        nfpm.write_text('#!/bin/sh\necho "$VERSION $PYTHON_MINOR $PYTHON_NEXT_MINOR" > stamped\n')
+        nfpm.chmod(0o755)
     env = os.environ | {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
     result = subprocess.run(
         [sys.executable, "packaging/build_deb.py"], cwd=tmp_path, env=env, check=False, capture_output=True

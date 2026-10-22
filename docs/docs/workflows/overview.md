@@ -17,8 +17,8 @@ A root job's id is the pipeline's name. A second call to the same pipeline, or e
 
 | Pipeline | Stages | Purpose |
 | :--- | :--- | :--- |
-| `library.yml` | lint, scan, test, build | A library's checks, and the build `publish.yml` ships |
-| `service.yml` | lint, scan, test, build | A backend's checks and build |
+| `library.yml` | lint, scan, test, test (windows), test (macos), test (&lt;version&gt;), build | A library's checks, and the build `publish.yml` ships |
+| `service.yml` | lint, scan, test, test (windows), test (macos), test (&lt;version&gt;), build | A backend's checks and build |
 | `website.yml` | lint, scan, test, build, check | A website's checks, the Zensical build, and optional link and accessibility checks of it |
 | `debian.yml` | build, test | The `.deb`, built against Debian's own Python and packaged with nFPM, then read back |
 | `docker.yml` | build, build (arm64), push | A multi-platform image, pushed to GHCR on a release |

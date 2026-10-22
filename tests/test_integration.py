@@ -195,11 +195,15 @@ def test_backend_debian_builds_its_venv_on_the_build_images_python(tmp_path: Pat
     ]
 
 
+# the images are Linux ones, which a Docker running Windows containers, as on GitHub's Windows runners, can't build
 HAS_DOCKER = (
     shutil.which("docker") is not None
-    and subprocess.run(["docker", "info"], capture_output=True, check=False).returncode == 0
+    and subprocess.run(
+        ["docker", "info", "--format", "{{.OSType}}"], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    == "linux"
 )
-requires_docker = pytest.mark.skipif(not HAS_DOCKER, reason="docker not available")
+requires_docker = pytest.mark.skipif(not HAS_DOCKER, reason="no docker running Linux containers")
 
 
 @pytest.fixture

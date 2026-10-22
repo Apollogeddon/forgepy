@@ -36,7 +36,7 @@ PIPELINES = [name for name in FILES if not name.startswith(".")]
 
 # The spec's stages: a run page reads <pipeline> / <stage>, the same words in every forge
 STAGES: dict[str, list[str]] = {
-    "library": ["lint", "scan", "test", "build"],
+    "library": ["lint", "scan", "test", "test (windows)", "test (macos)", "build"],
     "service": ["lint", "scan", "test", "test (windows)", "test (macos)", "test (databases)", "build"],
     "website": ["lint", "scan", "test", "build", "check", "check (lighthouse)"],
     "debian": ["build", "test"],
@@ -148,8 +148,8 @@ def test_pipeline_names_every_job_with_a_stage_from_the_spec(name: str):
     for job_id, job in _jobs(name).items():
         assert "name" in job, f"{name}:{job_id} has no name"
         assert _in_vocabulary(pipeline, job["name"]), f"{name}:{job_id} is named {job['name']!r}"
-        # the job id is the stage in kebab case
-        assert job_id == _kebab(job["name"])
+        # the job id is the stage in kebab case; a matrix's legs are named after their leg
+        assert job_id == ("test-versions" if job["name"] == "test (${{ matrix.version }})" else _kebab(job["name"]))
 
 
 @pytest.mark.parametrize("name", FILES)
@@ -602,6 +602,7 @@ def test_pre_build_command_runs_before_installing(name: str, job: str):
 
 
 _SETUP_PYTHON = re.compile(r"uses: actions/setup-python@\S+\n\s+with:\n\s+python-version: (.+)")
+_MATRIX_PYTHON = "${{ matrix.version }}"
 
 
 @pytest.mark.parametrize(
@@ -610,7 +611,8 @@ _SETUP_PYTHON = re.compile(r"uses: actions/setup-python@\S+\n\s+with:\n\s+python
 def test_setup_python_uses_the_resolved_version(name: str):
     """The input wins, then the project's .python-version, then forgepy's default, which must match what init pins."""
     content = (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
-    setups = _SETUP_PYTHON.findall(content)
+    # test-versions sets up each version its matrix lists
+    setups = [version for version in _SETUP_PYTHON.findall(content) if version != _MATRIX_PYTHON]
     assert setups
     assert all(version == "${{ steps.python.outputs.version }}" for version in setups)
     assert re.findall(r"else version=(\S+)", content) == [DEFAULT_PYTHON_VERSION] * len(setups)
@@ -622,6 +624,61 @@ def test_python_version_input_defaults_to_empty(name: str):
     inputs: YamlDoc = _workflow_call(name).get("inputs") or {}
     if "python_version" in inputs:
         assert inputs["python_version"]["default"] == ""
+
+
+# --- more platforms and Python versions -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+@pytest.mark.parametrize("key", ["test_windows", "test_macos", "test_versions"])
+def test_check_pipelines_test_on_more_platforms_and_versions_only_when_asked(name: str, key: str):
+    assert _workflow_call(name)["inputs"][key]["default"] == ""
+    job = _jobs(name)[key.replace("_", "-")]
+    assert job["if"] == f"inputs.run_tests && inputs.{key} != ''"
+    assert job["needs"] == ["lint", "scan"]
+    # the tests only: the Linux stage reports the coverage
+    assert [step["run"] for step in job["steps"] if step["name"] == "Test"] == [
+        ".venv/bin/python -m pytest" if key == "test_versions" else "uv run pytest"
+    ]
+    assert not any("upload-artifact" in step.get("uses", "") for step in job["steps"])
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+@pytest.mark.parametrize(("os_name", "default"), [("windows", "windows-latest"), ("macos", "macos-latest")])
+def test_platform_stages_take_a_runner_label_or_one_with_an_environment(name: str, os_name: str, default: str):
+    job = _jobs(name)[f"test-{os_name}"]
+    key = f"inputs.test_{os_name}"
+    assert job["runs-on"] == f"${{{{ startsWith({key}, '{{') && (fromJSON({key}).runs_on || '{default}') || {key} }}}}"
+    assert job["defaults"]["run"]["shell"] == "bash"
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+def test_versions_stage_installs_each_version_without_leaking_it_into_the_tests(name: str):
+    job = _jobs(name)["test-versions"]
+    assert job["strategy"]["matrix"]["version"] == "${{ fromJSON(inputs.test_versions || '[]') }}"
+    assert job["strategy"]["fail-fast"] is False
+    assert "env" not in job
+    install = next(step for step in job["steps"] if step["name"] == "Install dependencies")
+    assert 'uv sync --locked --python "$VERSION"' in install["run"]
+
+
+def test_own_index_tests_the_tool_on_every_platform_and_supported_python():
+    library = _load(".index.yml")["jobs"]["library"]["with"]
+    assert library["test_windows"] == "windows-latest"
+    assert library["test_macos"] == "macos-latest"
+    root = WORKFLOWS_DIR.parent.parent
+    requires = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["requires-python"]
+    floor = re.fullmatch(r">=(\d+\.\d+)", requires)
+    assert floor
+    own = (root / ".python-version").read_text(encoding="utf-8").strip()
+    minors = range(_minor(floor.group(1))[1], _minor(own)[1])
+    assert json.loads(library["test_versions"]) == [f"3.{minor}" for minor in minors]
+
+
+@pytest.mark.parametrize(("name", "text"), GENERATED, ids=[name for name, _ in GENERATED])
+def test_generated_index_leaves_the_extra_test_legs_off(name: str, text: str):  # noqa: ARG001
+    for key in ("test_windows", "test_macos", "test_versions"):
+        assert key not in text
 
 
 # --- website site checks --------------------------------------------------------------------------
@@ -684,16 +741,17 @@ def test_site_is_staged_under_base_path(tmp_path: Path, base_path: str, base: st
         "<urlset><url><loc>https://owner.github.io/my-site/</loc></url></urlset>", encoding="utf-8"
     )
     output = tmp_path / "output"
-    env = {"PATH": os.environ["PATH"], "BASE_PATH": base_path, "BUILD": str(build)}
+    env = {**os.environ, "BASE_PATH": base_path, "BUILD": str(build)}
     env |= {"RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output)}
     subprocess.run(["bash", "-e", "-c", _site_step("Stage the site for checking")["run"]], env=env, check=True)
     outputs = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
     root = tmp_path / "site"
-    assert outputs["root"] == str(root)
+    # as the shell joined it, which on Windows mixes separators
+    assert Path(outputs["root"]) == root
     assert outputs["base"] == base
     assert (root / base.strip("/") / "index.html").is_file()
     # links to the site's own address are checked in the staged copy
-    assert outputs["remap"] == rf"--remap '^https://owner\.github\.io/ file://{root}/'"
+    assert outputs["remap"] == rf"--remap '^https://owner\.github\.io/ file://{outputs['root']}/'"
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js")
@@ -1018,8 +1076,12 @@ def test_debian_build_refuses_an_nfpm_download_that_fails_its_checksum(tmp_path:
     bin_dir.mkdir()
     installed = tmp_path / "installed"
     # curl writes a tampered package; apt-get records whether it was asked to install anything
-    (bin_dir / "curl").write_text('#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\necho tampered > "$2"\n')
-    (bin_dir / "apt-get").write_text(f'#!/bin/sh\ntouch "{installed}"\n')
+    fakes = {
+        "curl": '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\necho tampered > "$2"\n',
+        "apt-get": f'#!/bin/sh\ntouch "{installed.as_posix()}"\n',
+    }
+    for tool, script in fakes.items():
+        (bin_dir / tool).write_text(script, encoding="utf-8", newline="\n")
     for tool in ("curl", "apt-get"):
         (bin_dir / tool).chmod(0o755)
     env = {
@@ -1185,10 +1247,12 @@ def _install_osv_scanner(tmp_path: Path, binary: str, sums: str, arch: str = "X6
     bin_dir.mkdir()
     served = tmp_path / "served"
     served.mkdir()
-    (served / "osv-scanner_linux_amd64").write_text(binary, encoding="utf-8")
-    (served / "osv-scanner_SHA256SUMS").write_text(sums, encoding="utf-8")
+    # newline="\n": as served, whatever the platform's own line ending
+    (served / "osv-scanner_linux_amd64").write_text(binary, encoding="utf-8", newline="\n")
+    (served / "osv-scanner_SHA256SUMS").write_text(sums, encoding="utf-8", newline="\n")
     curl = bin_dir / "curl"
-    curl.write_text(f'#!/bin/sh\nfor last; do :; done\ncp "{served}/${{last##*/}}" .\n', encoding="utf-8")
+    script = f'#!/bin/sh\nfor last; do :; done\ncp "{served.as_posix()}/${{last##*/}}" .\n'
+    curl.write_text(script, encoding="utf-8", newline="\n")
     curl.chmod(0o755)
     step = _osv_install("library.yml")
     env = {**os.environ, **step["env"], "ARCH": arch, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
