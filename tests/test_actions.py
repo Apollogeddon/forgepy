@@ -189,7 +189,7 @@ _LEVELS = {"none": 0, "read": 1, "write": 2}
 def _expect_wiring(caller: str, doc: YamlDoc, resolve: Callable[[str], str | None]) -> None:
     for job_id, job in doc["jobs"].items():
         if "uses" not in job:
-            assert job_id == "changes", f"{caller}:{job_id} runs steps itself"
+            assert job_id in ("changes", "scorecard"), f"{caller}:{job_id} runs steps itself"
             continue
         callee = resolve(job["uses"])
         assert callee is not None, f"{caller}:{job_id} calls {job['uses']}"
@@ -290,6 +290,17 @@ class TestOwnIndex:
 
     def test_listens_for_the_merge_pipelines_dispatch(self):
         assert _on(self.doc)["repository_dispatch"]["types"] == [_merge_dispatch_type()]
+
+    def test_scores_itself_with_scorecard_on_main_and_weekly_only_when_public(self):
+        scorecard = self.doc["jobs"]["scorecard"]
+        assert scorecard["if"].startswith("github.event.repository.private == false && ")
+        assert "github.event_name == 'push' || github.event_name == 'schedule'" in scorecard["if"]
+        assert scorecard["permissions"] == {"contents": "read", "security-events": "write", "actions": "read"}
+        score = next(step for step in scorecard["steps"] if "ossf/scorecard-action@" in step.get("uses", ""))
+        assert score["with"]["publish_results"] is False
+        upload = next(step for step in scorecard["steps"] if "codeql-action/upload-sarif@" in step.get("uses", ""))
+        assert upload["with"]["sarif_file"] == score["with"]["results_file"]
+        assert "schedule" in _on(self.doc)
 
     def test_merges_dependabot_pull_requests_only_after_every_check(self):
         merge = self.doc["jobs"]["merge"]
@@ -1083,6 +1094,16 @@ def _finding(advisory: str, max_severity: str, rating: str | None = None) -> Yam
         ],
         "groups": [{"ids": [advisory], "max_severity": max_severity}],
     }
+
+
+# a public repository's pull requests only: a private one needs GitHub Code Security for it
+@pytest.mark.parametrize("name", CHECKS)
+def test_scan_reviews_a_public_repositorys_pull_request_dependency_changes(name: str):
+    review = _step(name, "scan", "Review the dependency changes")
+    assert review["if"] == "github.event_name == 'pull_request' && github.event.repository.private == false"
+    assert re.match(r"actions/dependency-review-action@", review["uses"])
+    assert review["with"] == {"fail-on-severity": "high"}
+    assert review == _step("library.yml", "scan", "Review the dependency changes")
 
 
 @pytest.mark.parametrize("name", CHECKS)

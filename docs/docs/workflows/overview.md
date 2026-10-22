@@ -137,6 +137,7 @@ The other modes differ only in their jobs:
 Every generated workflow works in a private repository on GitHub Free. Two things GitHub Free offers only to public repositories turn on when the repository is public, checked with `github.event.repository.private == false` (a run without the field, such as a scheduled one, counts as private):
 
 - A library's `publish` job attests the build provenance of what it publishes (`attest`).
+- The check pipelines' `scan` stage reviews a pull request's dependency changes with GitHub's dependency review.
 - A website's `pages` job deploys to GitHub Pages. On a paid plan, which serves Pages from private repositories too, remove that condition from the job.
 
 The Python version isn't in `.index.yml`: every stage reads the project's `.python-version`; see [Python version](../configuration.md#python-version).
@@ -173,6 +174,7 @@ GitHub checks a called workflow's permissions against the caller's before runnin
 ## Repository settings
 
 - For a website, set **Settings → Pages → Source** to **GitHub Actions**. On GitHub Free, Pages needs a public repository.
+- On a public repository, turn on **Settings → Code security → Code scanning → CodeQL analysis** with the default setup, for Python and GitHub Actions, and **Secret Protection → Push protection**, so a pushed secret is blocked before it lands. Both are free on public repositories; on a private repository on GitHub Free, the `scan` stage's Gitleaks and OSV-Scanner cover secrets and vulnerable dependencies instead.
 - Turn on **Settings → Code security → Dependabot security updates**: they upgrade vulnerable dependencies through pull requests, which the `merge` pipeline handles like Dependabot's other ones.
 - For the Dependabot merge, turn on **Settings → General → Allow auto-merge**, and make your CI checks required in a branch protection rule or ruleset so GitHub waits for them before merging.
 - For a library, add a [trusted publisher](https://docs.pypi.org/trusted-publishers/) for the repository on your PyPI project, with `.index.yml` as its workflow.

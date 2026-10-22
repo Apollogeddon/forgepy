@@ -11,7 +11,7 @@ on:
   # sent by the merge pipeline, as a merge it makes starts no push run on main
   repository_dispatch:
     types: [auto-merged]
-  # weekly, for the patch pipeline, which a manual run and a Dependabot merge start too
+  # weekly, for the patch pipeline, which a manual run and a Dependabot merge start too, and the Scorecard
   schedule:
     - cron: '17 3 * * 1'
 
@@ -66,6 +66,38 @@ jobs:
           if printf '%s\n' "$files" | grep -qE "$DOCS_INPUTS"; then docs=true; else docs=false; fi
           echo "code=$code" | tee -a "$GITHUB_OUTPUT"
           echo "docs=$docs" | tee -a "$GITHUB_OUTPUT"
+
+  # OpenSSF Scorecard's checks of this repository's supply chain, as code scanning alerts; it only scores a
+  # public repository. Not a pipeline: it's for this repository, not the projects forgepy generates
+  scorecard:
+    name: scorecard
+    if: >-
+      github.event.repository.private == false && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'schedule')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # the results, as code scanning alerts
+      security-events: write
+      # scorecard reads the repository's workflow runs
+      actions: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Score
+        uses: ossf/scorecard-action@v2
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # publishing to the OpenSSF API needs id-token: write, and a badge isn't worth it
+          publish_results: false
+      - name: Upload the results
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
 
   version:
     needs: changes
