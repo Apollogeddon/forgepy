@@ -146,13 +146,13 @@ With **Require branches to be up to date before merging** turned on, every pull 
 2. **`assets`**: With `assets` set to an artifact's name, attaches its files to the GitHub release `tag_name` names, replacing any of the same name. The generated `--debian` workflow attaches the `.deb` this way.
 3. **`attest`**: With `attest`, attests the build provenance of the published build and the attached files with [`actions/attest-build-provenance`](https://github.com/actions/attest-build-provenance): a signed statement, kept by GitHub, of the repository, commit and workflow run that built them. *(Needs: package, assets)*
 
-Artifact attestations are free in public repositories; a private repository needs GitHub Enterprise Cloud, so `attest` is off by default. To turn it on, grant the `publish` job one more permission:
+Artifact attestations are free in public repositories; a private repository needs GitHub Enterprise Cloud, so `attest` is off by default. The generated library `publish` job turns it on only in a public repository, and grants the permission it needs:
 
 ```yaml
   publish:
     # ...as generated
     with:
-      attest: true
+      attest: ${{ github.event.repository.private == false }}
     permissions:
       contents: read
       id-token: write
@@ -178,7 +178,7 @@ Outputs `published` (`'true'` when this run published the package).
 
 1. **`deploy`**: Downloads the `artifact_name` build artifact, which `website.yml` uploaded earlier in the run, and deploys it to GitHub Pages. Deploys run one at a time, in the `pages-deploy` concurrency group: a newer deploy waits for a running one, and replaces one still waiting. The group isn't `pages`, the one GitHub's starter Pages workflow uses at workflow level, as a job sharing its caller's group deadlocks.
 
-`forgepy init --website` calls it on a release, or on every push to `main` without versioning.
+`forgepy init --website` calls it on a release, or on every push to `main` without versioning, and only from a public repository, as GitHub Free serves Pages only from those. On a paid plan, remove `github.event.repository.private == false` from the `pages` job's condition.
 
 ## debian.yml
 

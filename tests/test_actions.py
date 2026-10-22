@@ -353,7 +353,33 @@ def test_generated_index_checks_a_release_before_shipping_it_and_every_pull_requ
     assert "needs.version.outputs.new_release_published == 'true'" in jobs["library"]["if"]
     assert "github.event_name == 'pull_request'" in jobs["library"]["if"]
     assert "needs.library.result == 'success'" in jobs["publish"]["if"]
-    assert jobs["publish"]["permissions"] == {"contents": "read", "id-token": "write"}
+    assert jobs["publish"]["permissions"] == {"contents": "read", "id-token": "write", "attestations": "write"}
+
+
+_PUBLIC = "github.event.repository.private == false"
+
+
+# a free plan has artifact attestations and GitHub Pages only in a public repository; a missing
+# field, as on a scheduled run, reads as private, which always works
+def test_generated_library_attests_its_release_only_from_a_public_repository():
+    assert _generated_jobs(mode="library")["publish"]["with"] == {"attest": f"${{{{ {_PUBLIC} }}}}"}
+    assert "attest" not in _generated_jobs(debian=True)["publish"]["with"]
+
+
+@pytest.mark.parametrize("versioning", [True, False])
+def test_generated_website_deploys_only_from_a_public_repository(*, versioning: bool):
+    assert _generated_jobs(mode="website", versioning=versioning)["pages"]["if"].endswith(f" && {_PUBLIC} }}}}")
+
+
+def test_own_pages_deploys_only_from_a_public_repository():
+    assert _load(".index.yml")["jobs"]["pages"]["if"].endswith(f" && {_PUBLIC}")
+
+
+def test_never_negates_the_private_flag():
+    """!github.event.repository.private is true when the field is missing, which would turn on public-only steps."""
+    texts = [(WORKFLOWS_DIR / name).read_text(encoding="utf-8") for name in FILES] + [text for _, text in GENERATED]
+    for text in texts:
+        assert "!github.event.repository.private" not in text
 
 
 def test_generated_index_pushes_the_image_only_on_a_release():
@@ -374,7 +400,8 @@ def test_generated_index_attaches_the_deb_to_the_release():
 
 def test_generated_index_deploys_every_change_to_main_when_the_site_isnt_versioned():
     assert _generated_jobs(mode="website", versioning=False)["pages"]["if"] == (
-        "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}"
+        "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
+        " && github.event.repository.private == false }}"
     )
 
 

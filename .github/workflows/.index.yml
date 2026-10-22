@@ -112,9 +112,12 @@ jobs:
       contents: read
       pull-requests: write
 
+  # GitHub Pages needs a public repository on a free plan; a paid plan can drop the visibility check
   pages:
     needs: website
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name != 'pull_request' &&
+      github.event.repository.private == false
     uses: ./.github/workflows/pages.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}

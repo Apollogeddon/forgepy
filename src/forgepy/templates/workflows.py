@@ -40,6 +40,8 @@ jobs:
 """
 
 _RELEASED = "needs.version.outputs.new_release_published == 'true'"
+# false when the field is missing, as on a scheduled run, so the fallback is a private repository's behaviour
+_PUBLIC = "github.event.repository.private == false"
 
 
 def _expr(expression: str) -> str:
@@ -68,7 +70,7 @@ class PipelineJob:
     inputs: dict[str, str | bool] = field(default_factory=dict[str, str | bool])
 
     def render(self) -> str:
-        lines = [f"  # {self.comment}"] if self.comment else []
+        lines = [f"  # {line}" for line in self.comment.splitlines()]
         lines.append(f"  {self.id}:")
         if self.needs:
             lines.append(f"    needs: {self.needs[0] if len(self.needs) == 1 else '[' + ', '.join(self.needs) + ']'}")
@@ -170,11 +172,15 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
         jobs.append(
             PipelineJob(
                 id="publish",
-                comment="the release's package, to PyPI through Trusted Publishing",
+                comment=(
+                    "the release's package, to PyPI through Trusted Publishing, and its build provenance,\n"
+                    "which a free plan only attests in a public repository"
+                ),
                 needs=["version", checks],
                 condition=f"{_checks_passed(checks)} && {_RELEASED}",
                 pipeline="publish",
-                permissions={"contents": "read", "id-token": "write"},
+                inputs={"attest": _expr(_PUBLIC)},
+                permissions={"contents": "read", "id-token": "write", "attestations": "write"},
             )
         )
     elif cfg.versioning and cfg.debian:
@@ -199,11 +205,13 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
         jobs.append(
             PipelineJob(
                 id="pages",
-                comment="a release, to GitHub Pages" if cfg.versioning else "every change to main, to GitHub Pages",
+                comment=("a release" if cfg.versioning else "every change to main")
+                + ", to GitHub Pages, which a free plan only serves from a public repository;\n"
+                "a paid plan can drop the visibility check",
                 needs=["version", checks] if cfg.versioning else [checks],
-                condition=f"{_checks_passed(checks)} && {_RELEASED}"
+                condition=f"{_checks_passed(checks)} && {_RELEASED} && {_PUBLIC}"
                 if cfg.versioning
-                else "github.ref == 'refs/heads/main' && github.event_name != 'pull_request'",
+                else f"github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && {_PUBLIC}",
                 pipeline="pages",
                 permissions={"pages": "write", "id-token": "write"},
             )
