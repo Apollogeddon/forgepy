@@ -173,9 +173,9 @@ def test_names_every_step(name: str):
 
 @pytest.mark.parametrize("name", PIPELINES)
 def test_pipeline_jobs_ask_for_their_own_permissions(name: str):
-    """A job that asks for none takes its caller's grant, which only publish's assets and attest do on purpose."""
+    """A job that asks for none takes its caller's grant, which only publish's assets and attest and patch do on purpose."""
     for job_id, job in _jobs(name).items():
-        if (name, job_id) in {("publish.yml", "assets"), ("publish.yml", "attest")}:
+        if (name, job_id) in {("publish.yml", "assets"), ("publish.yml", "attest"), ("patch.yml", "update")}:
             assert "permissions" not in job
         else:
             assert "permissions" in job, f"{name}:{job_id}"
@@ -210,7 +210,7 @@ def test_pins_every_action_to_a_commit(name: str):
 @pytest.mark.parametrize("name", FILES)
 def test_grants_nothing_by_default(name: str):
     doc = _load(name)
-    if name == "publish.yml":
+    if name in ("publish.yml", "patch.yml"):
         assert "permissions" not in doc
     else:
         assert doc["permissions"] == {}
@@ -1035,7 +1035,11 @@ def test_patch_only_refreshes_forgepys_files_and_leaves_vulnerable_packages_to_d
         assert gone not in text
     assert _step("patch.yml", "update", "Refresh forgepy's files")["run"] == "uv run --locked forgepy sync"
     assert _jobs("patch.yml")["update"]["if"] == "github.ref == 'refs/heads/main'"
-    assert _jobs("patch.yml")["update"]["permissions"] == {"contents": "write", "pull-requests": "write"}
+    # the caller's grant, so a caller from before patch opened pull requests still starts
+    assert "permissions" not in _jobs("patch.yml")["update"]
+    propose = _step("patch.yml", "update", "Propose the refresh")["with"]["script"]
+    assert "error.status !== 403" in propose
+    assert "grant this job pull-requests: write" in propose
 
 
 def test_patch_gives_its_token_only_to_the_push():
