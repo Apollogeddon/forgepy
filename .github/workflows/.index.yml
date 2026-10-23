@@ -126,6 +126,10 @@ jobs:
     uses: ./.github/workflows/library.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      # the scan stage runs OSV-Scanner's container action, and the private repository's `xerus` runners can't
+      # run one: `xerus-docker` runs container steps as pods, in a job container with git
+      scan_runs_on: ${{ github.event.repository.private && 'xerus-docker' || 'ubuntu-latest' }}
+      scan_container: ${{ github.event.repository.private && 'buildpack-deps:trixie-scm' || '' }}
       # init scaffolds on every platform, and requires-python is >=3.11 while .python-version is 3.13, so a
       # release is tested on each, and its run fails on any of them; a pull request runs on Linux and 3.13
       # only, to stay cheap
@@ -143,6 +147,10 @@ jobs:
     uses: ./.github/workflows/website.yml
     with:
       runs_on: ${{ github.event.repository.private && 'xerus' || 'ubuntu-latest' }}
+      # the scan stage runs OSV-Scanner's container action, and the private repository's `xerus` runners can't
+      # run one: `xerus-docker` runs container steps as pods, in a job container with git
+      scan_runs_on: ${{ github.event.repository.private && 'xerus-docker' || 'ubuntu-latest' }}
+      scan_container: ${{ github.event.repository.private && 'buildpack-deps:trixie-scm' || '' }}
       working_directory: 'docs'
       build_command: 'uv run zensical build --strict'
       enable_secrets: false

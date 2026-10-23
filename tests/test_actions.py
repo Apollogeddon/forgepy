@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import itertools
 import json
 import os
@@ -1251,18 +1250,22 @@ new AsyncFunction('require', 'core', body)(require, core).then(() => console.log
 
 
 def _run_osv_report(
-    tmp_path: Path, status: int, results: list[YamlDoc] | None, *, enforce: bool
+    tmp_path: Path, outcome: str, results: list[YamlDoc] | None, *, enforce: bool, empty: bool = False
 ) -> dict[str, list[str]]:
+    """Runs the report step's script after a scan step that ended in `outcome` and wrote `results`, if any."""
     report = _step("library.yml", "scan", "Report OSV findings")
     script = tmp_path / "report.js"
     script.write_text(report["with"]["script"], encoding="utf-8")
-    osv_json = tmp_path / "osv.json"
-    if results is not None:
+    # where the action writes it: the workspace, which the report step resolves it against
+    osv_json = tmp_path / report["env"]["OSV_REPORT"]
+    if empty:
+        osv_json.write_text("", encoding="utf-8")
+    elif results is not None:
         osv_json.write_text(json.dumps({"results": results}), encoding="utf-8")
     env = {
         **os.environ,
-        "OSV_STATUS": str(status),
-        "OSV_REPORT": str(osv_json),
+        "OSV_OUTCOME": outcome,
+        "OSV_REPORT": report["env"]["OSV_REPORT"],
         "OSV_ENFORCE": "true" if enforce else "false",
         "GITHUB_WORKSPACE": str(tmp_path),
     }
@@ -1291,16 +1294,61 @@ def test_scan_reviews_a_public_repositorys_pull_request_dependency_changes(name:
     assert review == _step("library.yml", "scan", "Review the dependency changes")
 
 
+_OSV_ACTION = "google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36"
+
+
 @pytest.mark.parametrize("name", CHECKS)
-def test_osv_scan_never_swallows_the_result_and_is_the_same_in_every_check_pipeline(name: str):
+def test_osv_scan_uses_osv_scanners_own_pinned_action_and_is_the_same_in_every_check_pipeline(name: str):
     scan = _step(name, "scan", "Scan with OSV")
     report = _step(name, "scan", "Report OSV findings")
-    assert "|| true" not in scan["run"]
-    assert '"$RUNNER_TEMP/osv-scanner/osv-scanner" scan' in scan["run"]
+    assert scan["uses"] == _OSV_ACTION
+    # Dependabot reads the version from the comment
+    text = (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
+    assert f"uses: {_OSV_ACTION} # v2.7.0\n" in text
+    # a finding fails the action as a failure does, so the report decides
+    assert scan["continue-on-error"] is True
+    assert scan["with"]["scan-args"].split("\n") == [
+        "--format=json",
+        "--output=osv-results.json",
+        "--recursive",
+        "./${{ inputs.working_directory }}",
+    ]
+    assert report["env"] == {
+        "OSV_OUTCOME": "${{ steps.osv.outcome }}",
+        "OSV_REPORT": "osv-results.json",
+        "OSV_ENFORCE": "${{ github.event_name == 'pull_request' }}",
+    }
     names = [step.get("name") for step in _steps(name, "scan")]
-    assert names.index("Install OSV-Scanner") == names.index("Scan with OSV") - 1
-    assert report["env"]["OSV_ENFORCE"] == "${{ github.event_name == 'pull_request' }}"
+    assert names.index("Report OSV findings") == names.index("Scan with OSV") + 1
+    assert "Install OSV-Scanner" not in names
+    assert "curl" not in text
+    assert scan == _step("library.yml", "scan", "Scan with OSV")
     assert report == _step("library.yml", "scan", "Report OSV findings")
+
+
+# a runner set that can only run container actions in a job container, like a Kubernetes-mode one
+@pytest.mark.parametrize("name", CHECKS)
+def test_scan_takes_its_own_runner_and_job_container(name: str):
+    inputs = _workflow_call(name)["inputs"]
+    for key in ("scan_runs_on", "scan_container"):
+        assert inputs[key]["type"] == "string"
+        assert inputs[key]["default"] == ""
+        assert inputs[key]["required"] is False
+    scan = _jobs(name)["scan"]
+    assert scan["runs-on"] == "${{ inputs.scan_runs_on || inputs.runs_on }}"
+    assert scan["container"] == "${{ inputs.scan_container }}"
+    assert scan["permissions"] == {"contents": "read", "pull-requests": "write"}
+
+
+# in a job container git runs as root over the runner user's checkout, and Gitleaks needs git
+@pytest.mark.parametrize("name", CHECKS)
+def test_scan_trusts_the_workspace_right_after_checking_it_out(name: str):
+    steps = _steps(name, "scan")
+    names = [step.get("name") for step in steps]
+    assert names.index("Trust the workspace") == names.index("Check out") + 1
+    trust = _step(name, "scan", "Trust the workspace")
+    assert trust["run"] == 'git config --global --add safe.directory "$GITHUB_WORKSPACE"'
+    assert names.index("Trust the workspace") < names.index("Scan with Gitleaks")
 
 
 @needs_node
@@ -1309,7 +1357,7 @@ def test_osv_report_fails_only_a_pull_request_on_a_high_finding(tmp_path: Path, 
     lockfile = {"source": {"path": str(tmp_path / "uv.lock")}}
     calls = _run_osv_report(
         tmp_path,
-        1,
+        "failure",
         [{**lockfile, "packages": [_finding("GHSA-high", "9.8"), _finding("GHSA-low", "5.3")]}],
         enforce=enforce,
     )
@@ -1321,89 +1369,29 @@ def test_osv_report_fails_only_a_pull_request_on_a_high_finding(tmp_path: Path, 
 @needs_node
 def test_osv_report_uses_the_advisory_rating_without_a_score(tmp_path: Path):
     lockfile = {"source": {"path": str(tmp_path / "uv.lock")}}
-    calls = _run_osv_report(tmp_path, 1, [{**lockfile, "packages": [_finding("GHSA-c", "", "CRITICAL")]}], enforce=True)
+    calls = _run_osv_report(
+        tmp_path, "failure", [{**lockfile, "packages": [_finding("GHSA-c", "", "CRITICAL")]}], enforce=True
+    )
     assert len(calls["setFailed"]) == 1
 
 
 @needs_node
-@pytest.mark.parametrize(("status", "results"), [(0, []), (128, [])])
-def test_osv_report_passes_when_there_is_nothing_to_report(tmp_path: Path, status: int, results: list[YamlDoc]):
-    calls = _run_osv_report(tmp_path, status, results, enforce=True)
+@pytest.mark.parametrize(("results", "empty"), [([], False), (None, False), (None, True)])
+def test_osv_report_passes_when_there_is_nothing_to_report(
+    tmp_path: Path, results: list[YamlDoc] | None, *, empty: bool
+):
+    calls = _run_osv_report(tmp_path, "success", results, enforce=True, empty=empty)
     assert calls["setFailed"] == []
     assert calls["warning"] == []
+    if results is None:
+        assert calls["info"] == ["No lockfiles to scan"]
 
 
 # a pull request mustn't pass with its dependencies unchecked; elsewhere OSV's API being down mustn't stop a release
 @needs_node
-@pytest.mark.parametrize(("status", "results"), [(127, []), (1, None)])
+@pytest.mark.parametrize("empty", [False, True])
 @pytest.mark.parametrize("enforce", [True, False])
-def test_osv_report_fails_only_a_pull_request_it_couldnt_scan(
-    tmp_path: Path, status: int, results: list[YamlDoc] | None, *, enforce: bool
-):
-    calls = _run_osv_report(tmp_path, status, results, enforce=enforce)
+def test_osv_report_fails_only_a_pull_request_it_couldnt_scan(tmp_path: Path, *, enforce: bool, empty: bool):
+    calls = _run_osv_report(tmp_path, "failure", None, enforce=enforce, empty=empty)
     assert len(calls["setFailed"]) == (1 if enforce else 0)
     assert len(calls["warning"]) == (0 if enforce else 1)
-
-
-_OSV_INSTALLS = [name for name in FILES if "- name: Install OSV-Scanner" in (WORKFLOWS_DIR / name).read_text("utf-8")]
-
-
-def _osv_install(name: str) -> YamlDoc:
-    job = next(job for job in _jobs(name) if any(s.get("name") == "Install OSV-Scanner" for s in _steps(name, job)))
-    return _step(name, job, "Install OSV-Scanner")
-
-
-def test_every_check_pipeline_installs_osv_scanner_the_same_way():
-    assert set(CHECKS) <= set(_OSV_INSTALLS)
-    for name in _OSV_INSTALLS:
-        assert _osv_install(name) == _osv_install("library.yml"), name
-        assert "releases/latest" not in (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
-
-
-def test_osv_scanner_is_a_pinned_release():
-    assert re.fullmatch(r"v\d+\.\d+\.\d+", _osv_install("library.yml")["env"]["OSV_SCANNER_VERSION"])
-
-
-def _install_osv_scanner(tmp_path: Path, binary: str, sums: str, arch: str = "X64") -> subprocess.CompletedProcess[str]:
-    """Runs the install step with a curl that serves `binary` and the checksum file `sums`."""
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    served = tmp_path / "served"
-    served.mkdir()
-    # newline="\n": as served, whatever the platform's own line ending
-    (served / "osv-scanner_linux_amd64").write_text(binary, encoding="utf-8", newline="\n")
-    (served / "osv-scanner_SHA256SUMS").write_text(sums, encoding="utf-8", newline="\n")
-    curl = bin_dir / "curl"
-    script = f'#!/bin/sh\nfor last; do :; done\ncp "{served.as_posix()}/${{last##*/}}" .\n'
-    curl.write_text(script, encoding="utf-8", newline="\n")
-    curl.chmod(0o755)
-    step = _osv_install("library.yml")
-    env = {**os.environ, **step["env"], "ARCH": arch, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
-    env["RUNNER_TEMP"] = str(tmp_path)
-    script = _with_fakes(bin_dir, step["run"])
-    return _run_step(script, env=env, capture_output=True, check=False)
-
-
-needs_sha256sum = pytest.mark.skipif(shutil.which("sha256sum") is None, reason="needs sha256sum")
-
-
-@needs_sha256sum
-def test_osv_scanner_installs_a_download_that_matches_its_checksum(tmp_path: Path):
-    digest = hashlib.sha256(b"scanner").hexdigest()
-    result = _install_osv_scanner(tmp_path, "scanner", f"{digest}  osv-scanner_linux_amd64\n{'0' * 64}  other\n")
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert os.access(tmp_path / "osv-scanner" / "osv-scanner", os.X_OK)
-
-
-@needs_sha256sum
-def test_osv_scanner_refuses_a_download_that_fails_its_checksum(tmp_path: Path):
-    digest = hashlib.sha256(b"scanner").hexdigest()
-    result = _install_osv_scanner(tmp_path, "tampered", f"{digest}  osv-scanner_linux_amd64\n")
-    assert result.returncode != 0
-    assert not (tmp_path / "osv-scanner" / "osv-scanner").exists()
-
-
-def test_osv_scanner_refuses_a_runner_it_has_no_build_for(tmp_path: Path):
-    result = _install_osv_scanner(tmp_path, "scanner", "", arch="X86")
-    assert result.returncode != 0
-    assert "no Linux build for X86" in result.stdout

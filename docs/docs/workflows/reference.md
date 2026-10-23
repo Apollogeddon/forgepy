@@ -13,6 +13,17 @@ Every pipeline takes a `runs_on` input, default `ubuntu-latest`, for each of its
 
 `docker.yml`'s builds and its push use GitHub-hosted runners: the arm64 build because it needs a native Arm machine, and the others because they need a Docker daemon. With `buildkit_endpoint` set, it builds every platform in one job on `runs_on` instead, against a remote BuildKit, so self-hosted runners without a Docker daemon can build and push multi-platform images. `debian.yml`'s `build` stays on `ubuntu-latest` too, as it builds inside a Debian container.
 
+### The scan stage's runner
+
+The check pipelines' `scan` stage runs OSV-Scanner's container action (`docker://ghcr.io/google/osv-scanner-action`), so it needs a Linux runner that can run container actions: GitHub's hosted runners, or a self-hosted Kubernetes-mode runner set, which runs container steps as pods. A caller whose `runs_on` is a self-hosted runner without container support must set `scan_runs_on` to one that has it. A runner set that requires a job container, as a Kubernetes-mode one without a Docker daemon does, also takes `scan_container`: an image with git, which Gitleaks needs, such as `buildpack-deps:trixie-scm`.
+
+```yaml
+    with:
+      runs_on: my-runners
+      scan_runs_on: my-kubernetes-runners
+      scan_container: 'buildpack-deps:trixie-scm'
+```
+
 ## Check pipelines: library.yml, service.yml, website.yml
 
 *Lint, scan, test and build.*
@@ -20,7 +31,7 @@ Every pipeline takes a `runs_on` input, default `ubuntu-latest`, for each of its
 The three share their first four stages, job for job:
 
 1. **`lint`**: `uv sync --locked` (plus `sync_args`), then `ruff check`, `ruff format --check`, `basedpyright`, and `forgepy sync --check` when the project has a `.forgepy/` directory. In a `--jython` project (one with `.forgepy/ruff-jython.toml`) it also runs `poe compat`, the vermin Jython 2.7 check.
-2. **`scan`**: Gitleaks secret scan (skip with `enable_secrets: false`), on a public repository's pull requests GitHub's [dependency review](https://github.com/actions/dependency-review-action), which fails on a dependency change that brings in a high or critical vulnerability (a private repository needs GitHub Code Security for it, so it's skipped there), and an OSV-Scanner dependency scan. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail it: an advisory published against a dependency you already have shouldn't stop releases, and a Dependabot security update proposes the upgrade. Lower findings are warning annotations, and every finding is listed in the job summary. OSV-Scanner is a pinned release, checked against the checksums published with it, and a download that fails the check fails the stage. If the scanner can't finish, for example because OSV's API is unreachable, a pull request fails, as its dependencies weren't checked; elsewhere the stage warns and passes. To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside the lockfile:
+2. **`scan`**: Gitleaks secret scan (skip with `enable_secrets: false`), on a public repository's pull requests GitHub's [dependency review](https://github.com/actions/dependency-review-action), which fails on a dependency change that brings in a high or critical vulnerability (a private repository needs GitHub Code Security for it, so it's skipped there), and an OSV-Scanner dependency scan. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail it: an advisory published against a dependency you already have shouldn't stop releases, and a Dependabot security update proposes the upgrade. Lower findings are warning annotations, and every finding is listed in the job summary. OSV-Scanner runs through Google's own [action](https://github.com/google/osv-scanner-action), pinned to a commit like every action, so Dependabot's GitHub Actions updates keep it current. If the scanner can't finish, for example because OSV's API is unreachable, a pull request fails, as its dependencies weren't checked; elsewhere the stage warns and passes. The action is a container action, so the stage needs a Linux runner that can run one: see [The scan stage's runner](#the-scan-stages-runner). To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside the lockfile:
 
     ```toml
     [[IgnoredVulns]]
@@ -40,6 +51,8 @@ The three share their first four stages, job for job:
 | Input | Default | Description |
 | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | Runner label for every job |
+| `scan_runs_on` | `''` | Runner label for the scan stage, which runs OSV-Scanner's container action: a Linux runner that can run one, such as GitHub's hosted runners or a Kubernetes-mode runner set. Empty uses `runs_on`; see [The scan stage's runner](#the-scan-stages-runner) |
+| `scan_container` | `''` | Image the scan stage runs in, for a runner set that requires a job container, such as `buildpack-deps:trixie-scm`; it needs git. Empty runs on the runner itself |
 | `working_directory` | `'.'` | Directory holding `pyproject.toml` |
 | `python_version` | `''` | Python version for every job. Empty reads the project's `.python-version`, and without one uses Forge.py's default; see [Python version](../configuration.md#python-version) |
 | `enable_secrets` | `true` | Run the Gitleaks secret scan |
