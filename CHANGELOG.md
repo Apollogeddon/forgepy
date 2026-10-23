@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/Apollogeddon/forgepy/compare/v1.0.1...v1.1.0) (2026-10-23)
+
+
+### Features
+
+* **ci:** make the pipelines work on free private and public repositories, and harden them ([#72](https://github.com/Apollogeddon/forgepy/issues/72)) ([a84f3e8](https://github.com/Apollogeddon/forgepy/commit/a84f3e809bffb9480e842a670fc300aa0fe11f01))
+
+
+### Bug Fixes
+
+* **ci:** scan (osv) on github's ubuntu-latest in private repositories, whose runs_on may not run it ([#77](https://github.com/Apollogeddon/forgepy/issues/77)) ([de07ea2](https://github.com/Apollogeddon/forgepy/commit/de07ea255452b202675e775b75664464a3257a08))
+* **deps:** bump the dependencies group with 3 updates ([#75](https://github.com/Apollogeddon/forgepy/issues/75)) ([4d1f1d5](https://github.com/Apollogeddon/forgepy/commit/4d1f1d5024627d8e94d26bda6e2b37233466b670))
+
 ## [1.0.1](https://github.com/Apollogeddon/forgepy/compare/v1.0.0...v1.0.1) (2026-10-17)
 
 
