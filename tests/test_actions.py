@@ -1237,8 +1237,11 @@ def test_docker_builds_arm64_natively_only_when_asked_and_pushes_only_when_asked
 
 # runs the report step's github-script body under Node with a stand-in for its core API
 _OSV_HARNESS = """
-const calls = { info: [], warning: [], error: [], setFailed: [] };
-const record = (kind) => (message) => calls[kind].push(message);
+const calls = { info: [], warning: [], error: [], setFailed: [], files: [] };
+const record = (kind) => (message, properties) => {
+  calls[kind].push(message);
+  if (properties?.file) calls.files.push(properties.file);
+};
 const core = {
   info: record('info'), warning: record('warning'), error: record('error'), setFailed: record('setFailed'),
   summary: { addHeading() { return this; }, addTable() { return this; }, async write() {} },
@@ -1364,6 +1367,14 @@ def test_osv_report_fails_only_a_pull_request_on_a_high_finding(tmp_path: Path, 
     assert len(calls["setFailed"]) == failed
     assert any("GHSA-high" in message for message in calls["error"])
     assert any("GHSA-low" in message for message in calls["warning"])
+
+
+# the scanner runs in its own container, which mounts the workspace at /github/workspace
+@needs_node
+def test_osv_report_annotates_the_lockfile_relative_to_the_workspace(tmp_path: Path):
+    lockfile = {"source": {"path": "/github/workspace/docs/uv.lock"}}
+    calls = _run_osv_report(tmp_path, "failure", [{**lockfile, "packages": [_finding("GHSA-a", "9.8")]}], enforce=True)
+    assert calls["files"] == ["docs/uv.lock"]
 
 
 @needs_node

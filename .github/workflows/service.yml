@@ -247,7 +247,8 @@ jobs:
             const rows = [];
             let blocking = 0;
             for (const result of report.results ?? []) {
-              const file = path.relative(process.env.GITHUB_WORKSPACE, result.source.path);
+              // the scanner ran in its own container, which mounts the workspace at /github/workspace
+              const file = path.posix.relative('/github/workspace', result.source.path);
               for (const { package: pkg, vulnerabilities = [], groups = [] } of result.packages ?? []) {
                 for (const group of groups) {
                   const vulns = vulnerabilities.filter((v) => group.ids.includes(v.id));
