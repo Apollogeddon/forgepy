@@ -1312,7 +1312,7 @@ def test_osv_scan_uses_osv_scanners_own_pinned_action_and_is_the_same_in_every_c
     assert scan["continue-on-error"] is True
     assert scan["with"]["scan-args"].split("\n") == [
         "--format=json",
-        "--output=osv-results.json",
+        "--output-file=osv-results.json",
         "--recursive",
         "./${{ inputs.working_directory }}",
     ]

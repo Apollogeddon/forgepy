@@ -211,7 +211,7 @@ jobs:
         with:
           scan-args: |-
             --format=json
-            --output=osv-results.json
+            --output-file=osv-results.json
             --recursive
             ./${{ inputs.working_directory }}
       # A high or critical finding (CVSS 7 or more) fails a pull request; elsewhere it's annotated
