@@ -17,9 +17,9 @@ A root job's id is the pipeline's name. A second call to the same pipeline, or e
 
 | Pipeline | Stages | Purpose |
 | :--- | :--- | :--- |
-| `library.yml` | lint, scan, test, test (windows), test (macos), test (&lt;version&gt;), build | A library's checks, and the build `publish.yml` ships |
-| `service.yml` | lint, scan, test, test (windows), test (macos), test (&lt;version&gt;), build | A backend's checks and build |
-| `website.yml` | lint, scan, test, build, check | A website's checks, the Zensical build, and optional link and accessibility checks of it |
+| `library.yml` | lint, scan, scan (osv), test, test (windows), test (macos), test (&lt;version&gt;), build | A library's checks, and the build `publish.yml` ships |
+| `service.yml` | lint, scan, scan (osv), test, test (windows), test (macos), test (&lt;version&gt;), build | A backend's checks and build |
+| `website.yml` | lint, scan, scan (osv), test, build, check | A website's checks, the Zensical build, and optional link and accessibility checks of it |
 | `debian.yml` | build, test | The `.deb`, built against Debian's own Python and packaged with nFPM, then read back |
 | `docker.yml` | build, build (arm64), push | A multi-platform image, pushed to GHCR on a release |
 | `version.yml` | release | release-please: the release pull request, then the tag and GitHub release |
@@ -28,7 +28,7 @@ A root job's id is the pipeline's name. A second call to the same pipeline, or e
 | `patch.yml` | update | `forgepy sync`, with what it refreshes proposed as a pull request |
 | `merge.yml` | review, squash | A review request on Dependabot's pull requests, and their squash merge once the checks pass |
 
-The stages are `lint` (Ruff, basedpyright, `forgepy sync --check` and, in a `--jython` project, the Jython 2.7 check), `scan` (Gitleaks and OSV-Scanner), `test` (pytest with coverage), `build`, `check` (a check of a built result), `push`, `release`, `package`, `assets`, `attest`, `deploy`, `update`, `review` and `squash`.
+The stages are `lint` (Ruff, basedpyright, `forgepy sync --check` and, in a `--jython` project, the Jython 2.7 check), `scan` (Gitleaks and the dependency review, and as `scan (osv)` OSV-Scanner, in its own image), `test` (pytest with coverage), `build`, `check` (a check of a built result), `push`, `release`, `package`, `assets`, `attest`, `deploy`, `update`, `review` and `squash`.
 
 ## When each pipeline runs
 
@@ -179,7 +179,7 @@ GitHub checks a called workflow's permissions against the caller's before runnin
 ## Repository settings
 
 - For a website, set **Settings → Pages → Source** to **GitHub Actions**. On GitHub Free, Pages needs a public repository.
-- On a public repository, turn on **Settings → Code security → Code scanning → CodeQL analysis** with the default setup, for Python and GitHub Actions, and **Secret Protection → Push protection**, so a pushed secret is blocked before it lands. Both are free on public repositories; on a private repository on GitHub Free, the `scan` stage's Gitleaks and OSV-Scanner cover secrets and vulnerable dependencies instead.
+- On a public repository, turn on **Settings → Code security → Code scanning → CodeQL analysis** with the default setup, for Python and GitHub Actions, and **Secret Protection → Push protection**, so a pushed secret is blocked before it lands. Both are free on public repositories; on a private repository on GitHub Free, the `scan` stages' Gitleaks and OSV-Scanner cover secrets and vulnerable dependencies instead.
 - Turn on **Settings → Code security → Dependabot security updates**: they upgrade vulnerable dependencies through pull requests, which the `merge` pipeline handles like Dependabot's other ones.
 - For the Dependabot merge, turn on **Settings → General → Allow auto-merge**, and make your CI checks required in a branch protection rule or ruleset so GitHub waits for them before merging.
 - For a library, add a [trusted publisher](https://docs.pypi.org/trusted-publishers/) for the repository on your PyPI project, with `.index.yml` as its workflow.

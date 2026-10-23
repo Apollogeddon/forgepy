@@ -11,12 +11,7 @@ on:
         type: string
         default: 'ubuntu-latest'
       scan_runs_on:
-        description: "Runner label for the scan stage, which runs OSV-Scanner's container action: a Linux runner that can run one, such as GitHub's hosted runners or a Kubernetes-mode runner set; empty uses runs_on"
-        required: false
-        type: string
-        default: ''
-      scan_container:
-        description: "Image the scan stage runs in, for a runner set that requires a job container (e.g. buildpack-deps:trixie-scm); it needs git; empty runs on the runner itself"
+        description: "Runner label for the scan (osv) stage, which runs in OSV-Scanner's image: a Linux runner that can run a job container, such as GitHub's hosted runners or a Kubernetes-mode runner set; empty uses runs_on"
         required: false
         type: string
         default: ''
@@ -173,10 +168,7 @@ jobs:
 
   scan:
     name: scan
-    # OSV-Scanner's action is a container action, so this needs a Linux runner that can run one
-    runs-on: ${{ inputs.scan_runs_on || inputs.runs_on }}
-    # an empty image means no job container
-    container: ${{ inputs.scan_container }}
+    runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -192,9 +184,6 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
           fetch-depth: 0
-      # in a job container git runs as root over the runner user's checkout and refuses it (Gitleaks needs git)
-      - name: Trust the workspace
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Scan with Gitleaks
         if: inputs.enable_secrets
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
@@ -207,18 +196,32 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
-      # OSV-Scanner's own action, pinned like every action so Dependabot keeps it current. It exits non-zero on a finding
-      # as on a failure, so the report below decides; its results go in the workspace, which its container shares.
+
+  scan-osv:
+    name: scan (osv)
+    runs-on: ${{ inputs.scan_runs_on || inputs.runs_on }}
+    # OSV-Scanner's own image as the job's container, where a runner set with no Docker daemon runs it like any job
+    # container (it refuses the scanner's container action); Dependabot's docker updates keep the tag current
+    container:
+      image: ghcr.io/google/osv-scanner:v2.7.0
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
       - name: Scan with OSV
         id: osv
-        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        # it exits non-zero on a finding as on a failure, so the report below decides; an image's login shell resets
+        # PATH, so the scanner is named by its path
         continue-on-error: true
-        with:
-          scan-args: |-
-            --format=json
-            --output-file=osv-results.json
-            --recursive
-            ./${{ inputs.working_directory }}
+        run: /osv-scanner scan source --format=json --output-file="$GITHUB_WORKSPACE/osv-results.json" --recursive --allow-no-lockfiles .
       # A high or critical finding (CVSS 7 or more) fails a pull request; elsewhere it's annotated
       # instead, so releases still run while a Dependabot security update proposes the fix. Accept one
       # with an IgnoredVulns entry in an osv-scanner.toml beside the lockfile
@@ -252,8 +255,7 @@ jobs:
             const rows = [];
             let blocking = 0;
             for (const result of report.results ?? []) {
-              // the scanner ran in its own container, which mounts the workspace at /github/workspace
-              const file = path.posix.relative('/github/workspace', result.source.path);
+              const file = path.relative(process.env.GITHUB_WORKSPACE, result.source.path);
               for (const { package: pkg, vulnerabilities = [], groups = [] } of result.packages ?? []) {
                 for (const group of groups) {
                   const vulns = vulnerabilities.filter((v) => group.ids.includes(v.id));
@@ -291,7 +293,7 @@ jobs:
   test:
     name: test
     if: inputs.run_tests
-    needs: [lint, scan]
+    needs: [lint, scan, scan-osv]
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
     permissions:
@@ -353,7 +355,7 @@ jobs:
   build:
     name: build
     # only needs the lint and scan to pass, so it runs alongside the tests
-    needs: [lint, scan]
+    needs: [lint, scan, scan-osv]
     runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 10
     permissions:

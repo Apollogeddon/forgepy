@@ -552,9 +552,10 @@ CHECKS = ["library.yml", "service.yml", "website.yml"]
 def test_check_pipelines_share_their_lint_scan_test_and_build_stages(name: str):
     jobs = _jobs(name)
     assert [jobs[stage]["name"] for stage in ("lint", "scan", "test", "build")] == ["lint", "scan", "test", "build"]
-    assert jobs["test"]["needs"] == ["lint", "scan"]
-    # only needs the lint and scan to pass, so it runs alongside the tests
-    assert jobs["build"]["needs"] == ["lint", "scan"]
+    assert jobs["scan-osv"]["name"] == "scan (osv)"
+    assert jobs["test"]["needs"] == ["lint", "scan", "scan-osv"]
+    # only needs the lint and scans to pass, so it runs alongside the tests
+    assert jobs["build"]["needs"] == ["lint", "scan", "scan-osv"]
     assert jobs["test"]["if"] == "inputs.run_tests"
 
 
@@ -649,7 +650,9 @@ def test_build_stage_runs_the_build_command_through_the_environment(name: str, d
     assert build["env"] == {"BUILD_COMMAND": "${{ inputs.build_command }}"}
 
 
-@pytest.mark.parametrize(("name", "job"), [(name, job) for name in CHECKS for job in ("lint", "scan", "test", "build")])
+@pytest.mark.parametrize(
+    ("name", "job"), [(name, job) for name in CHECKS for job in ("lint", "scan", "scan-osv", "test", "build")]
+)
 def test_jobs_check_out_the_ref(name: str, job: str):
     assert _step(name, job, "Check out")["with"]["ref"] == "${{ inputs.ref }}"
 
@@ -706,7 +709,7 @@ def test_check_pipelines_test_on_more_platforms_and_versions_only_when_asked(nam
         assert job["if"] == f"inputs.run_tests && inputs.{key} != ''"
     else:
         assert job["if"] == f"inputs.{key} != '' && (inputs.run_tests || inputs.run_build)"
-    assert job["needs"] == ["lint", "scan"]
+    assert job["needs"] == ["lint", "scan", "scan-osv"]
 
 
 @pytest.mark.parametrize("name", ["library.yml", "service.yml"])
@@ -980,6 +983,8 @@ def test_squash_needs_the_checks_and_dependabot_to_open_the_pull_request_and_mak
     assert "github.event.pull_request.user.login == 'dependabot[bot]' && " in gate
     assert "github.actor == 'dependabot[bot]' && " in gate
     assert "!startsWith(github.head_ref, 'dependabot/github_actions/')" in gate
+    # a Docker update to an image a workflow runs in changes a workflow file too
+    assert "!startsWith(github.head_ref, 'dependabot/docker/dot-github/workflows/')" in gate
     assert "||" not in gate
     assert _workflow_call("merge.yml")["inputs"]["checks_passed"]["default"] is False
 
@@ -1256,10 +1261,10 @@ def _run_osv_report(
     tmp_path: Path, outcome: str, results: list[YamlDoc] | None, *, enforce: bool, empty: bool = False
 ) -> dict[str, list[str]]:
     """Runs the report step's script after a scan step that ended in `outcome` and wrote `results`, if any."""
-    report = _step("library.yml", "scan", "Report OSV findings")
+    report = _step("library.yml", "scan-osv", "Report OSV findings")
     script = tmp_path / "report.js"
     script.write_text(report["with"]["script"], encoding="utf-8")
-    # where the action writes it: the workspace, which the report step resolves it against
+    # where the scan step writes it: the workspace, which the report step resolves it against
     osv_json = tmp_path / report["env"]["OSV_REPORT"]
     if empty:
         osv_json.write_text("", encoding="utf-8")
@@ -1297,61 +1302,65 @@ def test_scan_reviews_a_public_repositorys_pull_request_dependency_changes(name:
     assert review == _step("library.yml", "scan", "Review the dependency changes")
 
 
-_OSV_ACTION = "google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36"
+_OSV_IMAGE = re.compile(r"^ghcr\.io/google/osv-scanner:v\d+\.\d+\.\d+$")
+_OSV_RUN = (
+    '/osv-scanner scan source --format=json --output-file="$GITHUB_WORKSPACE/osv-results.json"'
+    " --recursive --allow-no-lockfiles ."
+)
 
 
+# OSV-Scanner's own image as a job container, which a runner set with no Docker daemon runs as it runs any,
+# where it refuses the scanner's container action
 @pytest.mark.parametrize("name", CHECKS)
-def test_osv_scan_uses_osv_scanners_own_pinned_action_and_is_the_same_in_every_check_pipeline(name: str):
-    scan = _step(name, "scan", "Scan with OSV")
-    report = _step(name, "scan", "Report OSV findings")
-    assert scan["uses"] == _OSV_ACTION
-    # Dependabot reads the version from the comment
+def test_osv_scan_runs_in_osv_scanners_own_image_and_is_the_same_in_every_check_pipeline(name: str):
+    job = _jobs(name)["scan-osv"]
+    assert job["name"] == "scan (osv)"
+    assert job["runs-on"] == "${{ inputs.scan_runs_on || inputs.runs_on }}"
+    assert job["permissions"] == {"contents": "read"}
+    assert job["defaults"] == {"run": {"working-directory": "${{ inputs.working_directory }}"}}
+    assert set(job["container"]) == {"image"}
+    assert _OSV_IMAGE.match(job["container"]["image"])
+    # an `image:` key, which Dependabot's docker ecosystem updates
     text = (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
-    assert f"uses: {_OSV_ACTION} # v2.7.0\n" in text
-    # a finding fails the action as a failure does, so the report decides
+    assert f"      image: {job['container']['image']}\n" in text
+    assert "google/osv-scanner-action" not in text
+    assert [step["name"] for step in job["steps"]] == ["Check out", "Scan with OSV", "Report OSV findings"]
+    scan = _step(name, "scan-osv", "Scan with OSV")
+    # a finding fails the scanner as a failure does, so the report decides
     assert scan["continue-on-error"] is True
-    assert scan["with"]["scan-args"].split("\n") == [
-        "--format=json",
-        "--output-file=osv-results.json",
-        "--recursive",
-        "./${{ inputs.working_directory }}",
-    ]
+    assert scan["id"] == "osv"
+    assert scan["run"] == _OSV_RUN
+    assert "uses" not in scan
+    report = _step(name, "scan-osv", "Report OSV findings")
     assert report["env"] == {
         "OSV_OUTCOME": "${{ steps.osv.outcome }}",
         "OSV_REPORT": "osv-results.json",
         "OSV_ENFORCE": "${{ github.event_name == 'pull_request' }}",
     }
-    names = [step.get("name") for step in _steps(name, "scan")]
-    assert names.index("Report OSV findings") == names.index("Scan with OSV") + 1
-    assert "Install OSV-Scanner" not in names
     assert "curl" not in text
-    assert scan == _step("library.yml", "scan", "Scan with OSV")
-    assert report == _step("library.yml", "scan", "Report OSV findings")
+    assert job == _jobs("library.yml")["scan-osv"]
 
 
-# a runner set that can only run container actions in a job container, like a Kubernetes-mode one
 @pytest.mark.parametrize("name", CHECKS)
-def test_scan_takes_its_own_runner_and_job_container(name: str):
+def test_scan_keeps_gitleaks_and_the_dependency_review_on_the_pipelines_runner(name: str):
     inputs = _workflow_call(name)["inputs"]
-    for key in ("scan_runs_on", "scan_container"):
-        assert inputs[key]["type"] == "string"
-        assert inputs[key]["default"] == ""
-        assert inputs[key]["required"] is False
+    assert inputs["scan_runs_on"]["type"] == "string"
+    assert inputs["scan_runs_on"]["default"] == ""
+    assert inputs["scan_runs_on"]["required"] is False
+    assert "scan_container" not in inputs
     scan = _jobs(name)["scan"]
-    assert scan["runs-on"] == "${{ inputs.scan_runs_on || inputs.runs_on }}"
-    assert scan["container"] == "${{ inputs.scan_container }}"
+    assert scan["runs-on"] == "${{ inputs.runs_on }}"
+    assert "container" not in scan
     assert scan["permissions"] == {"contents": "read", "pull-requests": "write"}
+    names = [step.get("name") for step in scan["steps"]]
+    assert names == ["Check out", "Scan with Gitleaks", "Review the dependency changes"]
 
 
-# in a job container git runs as root over the runner user's checkout, and Gitleaks needs git
-@pytest.mark.parametrize("name", CHECKS)
-def test_scan_trusts_the_workspace_right_after_checking_it_out(name: str):
-    steps = _steps(name, "scan")
-    names = [step.get("name") for step in steps]
-    assert names.index("Trust the workspace") == names.index("Check out") + 1
-    trust = _step(name, "scan", "Trust the workspace")
-    assert trust["run"] == 'git config --global --add safe.directory "$GITHUB_WORKSPACE"'
-    assert names.index("Trust the workspace") < names.index("Scan with Gitleaks")
+def test_nothing_passes_scan_container_or_uses_osv_scanners_action():
+    for name in FILES:
+        text = (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
+        assert "scan_container" not in text, name
+        assert "google/osv-scanner-action" not in text, name
 
 
 @needs_node
@@ -1369,12 +1378,13 @@ def test_osv_report_fails_only_a_pull_request_on_a_high_finding(tmp_path: Path, 
     assert any("GHSA-low" in message for message in calls["warning"])
 
 
-# the scanner runs in its own container, which mounts the workspace at /github/workspace
+# the scanner reports absolute paths inside the workspace, and an annotation takes one relative to it
 @needs_node
 def test_osv_report_annotates_the_lockfile_relative_to_the_workspace(tmp_path: Path):
-    lockfile = {"source": {"path": "/github/workspace/docs/uv.lock"}}
+    lockfile = {"source": {"path": str(tmp_path / "docs" / "uv.lock")}}
     calls = _run_osv_report(tmp_path, "failure", [{**lockfile, "packages": [_finding("GHSA-a", "9.8")]}], enforce=True)
-    assert calls["files"] == ["docs/uv.lock"]
+    assert [Path(file).as_posix() for file in calls["files"]] == ["docs/uv.lock"]
+    assert not any(Path(file).is_absolute() for file in calls["files"])
 
 
 @needs_node
