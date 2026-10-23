@@ -46,6 +46,9 @@ on:
         type: string
         default: ''
 
+# nothing by default: every job asks for what it needs
+permissions: {}
+
 jobs:
   # Every platform but a native arm64 one, in one build: amd64 natively and the rest with QEMU, or all of them on
   # the remote BuildKit. Pushed images go up untagged by digest, and push tags the combined manifest.
@@ -60,7 +63,7 @@ jobs:
       packages: write
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Resolve the image and platforms
@@ -90,13 +93,13 @@ jobs:
 
       - name: Set up QEMU
         if: inputs.buildkit_endpoint == '' && steps.plan.outputs.emulate == 'true'
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - name: Set up Buildx
         if: inputs.buildkit_endpoint == '' && steps.plan.outputs.platforms != ''
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to GHCR
         if: inputs.buildkit_endpoint == '' && inputs.push && steps.plan.outputs.platforms != ''
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -104,7 +107,7 @@ jobs:
       - name: Build
         id: build
         if: inputs.buildkit_endpoint == '' && steps.plan.outputs.platforms != ''
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ inputs.working_directory }}
           platforms: ${{ steps.plan.outputs.platforms }}
@@ -122,7 +125,7 @@ jobs:
           touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
       - name: Upload the digest
         if: inputs.buildkit_endpoint == '' && inputs.push && steps.plan.outputs.platforms != ''
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docker-digest-build
           path: ${{ runner.temp }}/digests/*
@@ -146,7 +149,7 @@ jobs:
       - name: Compute the tags
         if: inputs.buildkit_endpoint != '' && inputs.push
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ steps.plan.outputs.image }}
           tags: |
@@ -194,7 +197,7 @@ jobs:
       packages: write
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Resolve the image
@@ -213,10 +216,10 @@ jobs:
           echo "wanted=$wanted" >> "$GITHUB_OUTPUT"
       - name: Set up Buildx
         if: steps.plan.outputs.wanted == 'true'
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to GHCR
         if: steps.plan.outputs.wanted == 'true' && inputs.push
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -224,7 +227,7 @@ jobs:
       - name: Build
         id: build
         if: steps.plan.outputs.wanted == 'true'
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ inputs.working_directory }}
           platforms: linux/arm64
@@ -242,7 +245,7 @@ jobs:
           touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
       - name: Upload the digest
         if: steps.plan.outputs.wanted == 'true' && inputs.push
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docker-digest-arm64
           path: ${{ runner.temp }}/digests/*
@@ -271,22 +274,22 @@ jobs:
           image="${IMAGE:-ghcr.io/$REPOSITORY}"
           echo "image=${image,,}" >> "$GITHUB_OUTPUT"
       - name: Download the digests
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: ${{ runner.temp }}/digests
           pattern: docker-digest-*
           merge-multiple: true
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Compute the tags
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ steps.plan.outputs.image }}
           tags: |

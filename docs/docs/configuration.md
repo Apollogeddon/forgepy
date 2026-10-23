@@ -51,7 +51,7 @@ uv run forgepy sync
 
 `uv lock --upgrade-package forgepy` doesn't move past the tag. Dependabot doesn't look up newer tags on a Git remote, so it doesn't propose Forge.py upgrades. `forgepy sync` never moves the tag.
 
-`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and CI's `lint` stage all run it, so a stale snapshot fails the checks. The `patch` pipeline, weekly, on a manual run and after a Dependabot merge, runs `forgepy sync` on `main` and commits what it refreshes.
+`forgepy sync --check` reports drift without writing anything and exits with status `1` if the snapshot is out of date. The generated pre-commit hook, the `sync-check` task and CI's `lint` stage all run it, so a stale snapshot fails the checks. The `patch` pipeline, weekly, on a manual run and after a Dependabot merge, runs `forgepy sync` and proposes what it refreshes as a pull request from the `forgepy/sync` branch.
 
 ## Quality and testing
 
@@ -171,6 +171,10 @@ CI builds the image for every configured platform. See [docker.yml](workflows/re
 
 CI's `debian` pipeline builds on Debian trixie and its `python3`, so the package installs on trixie. A Debian project must target that Python or older: `init --debian` refuses a newer `--python`.
 
+### Windows and macOS
+
+`--windows` and `--macos` add no files: they set `test_windows: windows-latest` and `test_macos: macos-latest` on the checks job in `.index.yml`, so the `library` or `service` pipeline also runs the tests and the build on that system and uploads the build as its own artifact. A website has no such stages, so `init` refuses them with `--website`. Without them, CI runs on Linux only, as a private repository pays more for Windows and macOS minutes. To pass a runner's environment, a shorter suite or a setup script, edit the job's inputs instead: see [Windows and macOS](workflows/reference.md#windows-and-macos).
+
 ## Jython projects
 
 `forgepy init --jython` is for scripts that run on Jython 2.7, such as an application platform's scripting layer. The tools still run on CPython 3: uv installs them and the test suite, but doesn't build or install the project itself (`[tool.uv] package = false`, no build system and no `build` task). Scripts go under `src/`, and `pytest.toml` puts `src` on the import path.
@@ -206,7 +210,8 @@ So moving a project to another version is one edit to `.python-version`, with `r
 | :--- | :--- |
 | `.gitignore` | Ignores what uv, the generated tasks and the `.deb` build write: `.venv/`, `__pycache__/`, `dist/`, test and coverage reports, tool caches and `*.deb` |
 | `.editorconfig` | LF line endings, UTF-8 and 120 columns, with 4-space Python and 2-space everything else, matching the Ruff config |
-| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The `merge` pipeline requests your review on them and squash-merges them once CI passes. Forge.py itself isn't among them: see [Upgrading](#upgrading). |
+| `.gitattributes` | LF in the working tree on every platform, so a Windows checkout reads the same; written once, never overwritten, so your own rules (Git LFS, say) are safe |
+| `.github/dependabot.yml` | Weekly uv and GitHub Actions updates, plus Docker with `--docker`. Minor and patch updates are grouped into one pull request, and each update waits 3 days after it's published before it's proposed, so a compromised release has time to be caught upstream. The `merge` pipeline requests your review on them and squash-merges each one once CI passes, majors included. Forge.py itself isn't among them: see [Upgrading](#upgrading). |
 | `.github/CODEOWNERS` | `* @owner`, so every pull request someone else opens, Dependabot's and release-please's included, requests your review and shows in your review requests. It doesn't block merging. |
 
 The `CODEOWNERS` owner is the GitHub account in a `[project.urls]` entry of `pyproject.toml` or, failing that, the `origin` remote. A project with neither gets no `CODEOWNERS`; run `init` again once it has a GitHub remote.

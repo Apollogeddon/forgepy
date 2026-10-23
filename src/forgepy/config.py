@@ -56,6 +56,9 @@ class InitConfig:
     versioning: bool = True
     docker: bool = False
     debian: bool = False
+    # CI tests and builds on these too, which a private repository's minutes pay more for
+    windows: bool = False
+    macos: bool = False
     # the code runs on Jython 2.7: uv installs only the dev tools, and the checks keep it Python 2 compatible
     jython: bool = False
     # None takes the project's own pin (core resolves it), else DEFAULT_PYTHON_VERSION
@@ -91,6 +94,9 @@ class InitConfig:
             )
         if self.docker and self.mode.is_library:
             errors.append("--docker is not available in library mode")
+        for flag, on in (("--windows", self.windows), ("--macos", self.macos)):
+            if on and self.mode.is_website:
+                errors.append(f"{flag} is not available in website mode")
         if self.debian and not self.mode.is_backend:
             errors.append("--debian is only available in backend mode")
         if self.jython and not self.mode.is_backend:

@@ -163,6 +163,32 @@ def test_init_website_docker_creates_nginx_dockerfile():
     assert "FROM --platform=$BUILDPLATFORM" in dockerfile
 
 
+@pytest.mark.parametrize("mode", [Mode.BACKEND, Mode.LIBRARY])
+@pytest.mark.parametrize(("windows", "macos"), [(True, False), (False, True), (True, True)])
+def test_init_tests_and_builds_on_windows_and_macos_when_asked(mode: Mode, *, windows: bool, macos: bool):
+    fs = MemoryFileSystem()
+    assert init(InitConfig(target=PROJECT, mode=mode, windows=windows, macos=macos), fs) == 0
+    checks = _workflow(fs)["jobs"]["library" if mode.is_library else "service"]
+    expected = {"test_windows": "windows-latest"} if windows else {}
+    expected |= {"test_macos": "macos-latest"} if macos else {}
+    assert {k: v for k, v in checks.get("with", {}).items() if k.startswith("test_")} == expected
+
+
+def test_init_leaves_windows_and_macos_off_by_default():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    assert "with" not in _workflow(fs)["jobs"]["service"]
+
+
+@pytest.mark.parametrize("flag", ["windows", "macos"])
+def test_init_refuses_windows_and_macos_for_a_website(flag: str):
+    fs = MemoryFileSystem()
+    cfg = InitConfig(target=PROJECT, mode=Mode.WEBSITE, windows=flag == "windows", macos=flag == "macos")
+    assert cfg.validate() == [f"--{flag} is not available in website mode"]
+    assert init(cfg, fs) == EXIT_INVALID_CONFIG
+    assert not fs.exists(PROJECT / "pyproject.toml")
+
+
 def test_init_rejects_invalid_combinations_without_writing():
     fs = MemoryFileSystem()
     assert init(InitConfig(target=PROJECT, mode=Mode.LIBRARY, docker=True), fs) == EXIT_INVALID_CONFIG
@@ -219,6 +245,17 @@ def test_init_pins_the_forgepy_source_to_the_running_release(monkeypatch: pytest
     fs = MemoryFileSystem()
     init(InitConfig(target=PROJECT), fs)
     assert _forgepy_source(fs) == {"git": FORGEPY_GIT, "tag": "v1.2.3"}
+
+
+# projects track the pipelines at main on purpose, whichever forgepy release ran init
+@pytest.mark.parametrize("version", ["1.2.3", "1.3.0.dev0"])
+def test_init_calls_the_pipelines_at_main(monkeypatch: pytest.MonkeyPatch, version: str):
+    monkeypatch.setattr(base, "__version__", version)
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    uses = [job["uses"] for job in _workflow(fs)["jobs"].values()]
+    assert uses
+    assert all(use.endswith(".yml@main") for use in uses)
 
 
 def test_init_leaves_the_forgepy_source_untagged_for_a_build_that_isnt_a_release(
@@ -403,22 +440,25 @@ def test_init_release_config_bumps_the_normalized_name_in_uv_lock():
         InitConfig(target=PROJECT, mode=Mode.WEBSITE),
         InitConfig(target=PROJECT, debian=True),
         InitConfig(target=PROJECT, docker=True),
+        InitConfig(target=PROJECT, windows=True, macos=True),
+        InitConfig(target=PROJECT, mode=Mode.LIBRARY, windows=True, macos=True),
     ],
-    ids=["backend", "library", "website", "debian", "docker"],
+    ids=["backend", "library", "website", "debian", "docker", "windows-macos", "library-windows-macos"],
 )
 def test_init_generates_least_privilege_ci_that_never_cancels_main(cfg: InitConfig):
     fs = MemoryFileSystem()
     init(cfg, fs)
     workflow = _workflow(fs)
     # a run outside a pull request has a group of its own, so one on main is never cancelled
-    assert "github.head_ref || github.run_id" in workflow["concurrency"]["group"]
+    assert "github.event.pull_request.number || github.run_id" in workflow["concurrency"]["group"]
+    assert workflow["permissions"] == {}
     for name, job in workflow["jobs"].items():
-        # the called workflows only use GITHUB_TOKEN, which they get without inheriting every secret
-        assert "secrets" not in job, f"{name} passes secrets"
+        # secrets go by name, never inherit, and only the release app's key at that
+        assert job.get("secrets", {}) in ({}, {"APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"}), name
         # only PyPI Trusted Publishing and GitHub Pages need an OIDC token
         if name not in ("publish", "pages"):
             assert "id-token" not in job["permissions"], f"{name} asks for id-token"
-    # vulnerable packages are upgraded on main, weekly, on a manual run and after a Dependabot merge
+    # forgepy's files are refreshed through a pull request, weekly, on a manual run and after a Dependabot merge
     assert workflow["jobs"]["patch"]["uses"] == f"{FORGEPY}/patch.yml@main"
 
 
@@ -505,6 +545,7 @@ def test_init_writes_editorconfig_and_dependabot_with_a_cooldown():
     dependabot = yaml.safe_load(fs.read_text(PROJECT / ".github/dependabot.yml"))
     assert [u["package-ecosystem"] for u in dependabot["updates"]] == ["uv", "github-actions"]
     assert all(u["cooldown"]["default-days"] == COOLDOWN_DAYS for u in dependabot["updates"])
+    # the pipelines are called at @main, which has no versions to propose
     assert dependabot["updates"][1]["ignore"] == [{"dependency-name": "apollogeddon/forgepy"}]
 
 
@@ -566,6 +607,16 @@ def test_init_writes_a_gitignore_once_and_keeps_the_projects_own():
     fs.write_text(PROJECT / ".gitignore", "custom\n")
     init(InitConfig(target=PROJECT, force=True), fs)
     assert fs.read_text(PROJECT / ".gitignore") == "custom\n"
+
+
+# LF on every platform, so a Windows checkout reads the same; a project's own rules are never replaced
+def test_init_writes_a_gitattributes_once_and_keeps_the_projects_own():
+    fs = MemoryFileSystem()
+    init(InitConfig(target=PROJECT), fs)
+    assert fs.read_text(PROJECT / ".gitattributes") == "* text=auto eol=lf\n"
+    fs.write_text(PROJECT / ".gitattributes", "*.psd filter=lfs diff=lfs merge=lfs -text\n")
+    init(InitConfig(target=PROJECT, force=True), fs)
+    assert fs.read_text(PROJECT / ".gitattributes") == "*.psd filter=lfs diff=lfs merge=lfs -text\n"
 
 
 def _ruff_target(fs: MemoryFileSystem) -> str:
@@ -634,9 +685,13 @@ def test_init_debian_depends_on_the_python_the_venv_was_built_with(tmp_path: Pat
     (tmp_path / ".venv/pyvenv.cfg").write_text("home = /usr/bin\nversion_info = 3.13.5\n")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    nfpm = bin_dir / "nfpm"
-    nfpm.write_text('#!/bin/sh\necho "$VERSION $PYTHON_MINOR $PYTHON_NEXT_MINOR" > stamped\n')
-    nfpm.chmod(0o755)
+    # a stand-in Windows can run too, as shutil.which only finds a file with a PATHEXT extension there
+    if os.name == "nt":
+        (bin_dir / "nfpm.bat").write_text("@echo %VERSION% %PYTHON_MINOR% %PYTHON_NEXT_MINOR%> stamped\n")
+    else:
+        nfpm = bin_dir / "nfpm"
+        nfpm.write_text('#!/bin/sh\necho "$VERSION $PYTHON_MINOR $PYTHON_NEXT_MINOR" > stamped\n')
+        nfpm.chmod(0o755)
     env = os.environ | {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
     result = subprocess.run(
         [sys.executable, "packaging/build_deb.py"], cwd=tmp_path, env=env, check=False, capture_output=True

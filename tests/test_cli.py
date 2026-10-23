@@ -56,6 +56,22 @@ def test_docker_with_library_rejected(tmp_path: Path):
     assert "docker" in result.stderr.lower()
 
 
+@pytest.mark.parametrize("flag", ["--windows", "--macos"])
+def test_windows_or_macos_with_website_rejected(tmp_path: Path, flag: str):
+    result = run_cli("init", "--website", flag, "--dry-run", cwd=tmp_path)
+    assert result.returncode == EXIT_INVALID_CONFIG
+    assert f"{flag} is not available in website mode" in result.stderr
+
+
+@pytest.mark.parametrize("mode", ["--backend", "--library"])
+def test_windows_and_macos_test_and_build_on_them_too(tmp_path: Path, mode: str):
+    result = run_cli("init", mode, "--windows", "--macos", cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    index = (tmp_path / ".github" / "workflows" / ".index.yml").read_text(encoding="utf-8")
+    assert "test_windows: windows-latest" in index
+    assert "test_macos: macos-latest" in index
+
+
 def test_debian_with_website_rejected(tmp_path: Path):
     result = run_cli("init", "--website", "--debian", "--dry-run", cwd=tmp_path)
     assert result.returncode != 0

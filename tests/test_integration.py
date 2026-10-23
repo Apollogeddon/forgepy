@@ -20,6 +20,18 @@ from forgepy.config import DEBIAN_IMAGE, DEBIAN_PYTHON_VERSION
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+
+def _bash() -> str:
+    """The bash step scripts run in: on Windows, Git's own, as a bare "bash" finds System32's WSL launcher."""
+    if os.name != "nt":
+        return "bash"
+    # git.exe sits in Git/cmd, Git/bin or Git/mingw64/bin, and bash.exe in Git/bin
+    git = Path(shutil.which("git") or "git").resolve()
+    return next((str(p / "bin" / "bash.exe") for p in git.parents if (p / "bin" / "bash.exe").is_file()), "bash")
+
+
+BASH = _bash()
+
 pytestmark = [
     pytest.mark.slow,
     pytest.mark.skipif(shutil.which("uv") is None, reason="uv not on PATH"),
@@ -109,7 +121,7 @@ def _run_check_stages(project: Path) -> list[str]:
             guard = re.match(r"hashFiles\(format\('\{0\}/([^']+)'", step.get("if", ""))
             if guard and not list(project.glob(guard.group(1))):
                 continue
-            _run(["bash", "-e", "-c", step["run"]], cwd=project, env=env)
+            _run([BASH, "-e", "-c", step["run"]], cwd=project, env=env)
             ran.append(f"{stage} / {step['name']}")
     return ran
 
@@ -195,11 +207,15 @@ def test_backend_debian_builds_its_venv_on_the_build_images_python(tmp_path: Pat
     ]
 
 
+# the images are Linux ones, which a Docker running Windows containers, as on GitHub's Windows runners, can't build
 HAS_DOCKER = (
     shutil.which("docker") is not None
-    and subprocess.run(["docker", "info"], capture_output=True, check=False).returncode == 0
+    and subprocess.run(
+        ["docker", "info", "--format", "{{.OSType}}"], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    == "linux"
 )
-requires_docker = pytest.mark.skipif(not HAS_DOCKER, reason="docker not available")
+requires_docker = pytest.mark.skipif(not HAS_DOCKER, reason="no docker running Linux containers")
 
 
 @pytest.fixture

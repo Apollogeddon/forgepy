@@ -55,6 +55,8 @@ class BaseFeature(Feature):
 
         ok = create_file(ctx, ".editorconfig", repository_templates.EDITORCONFIG)
         ok &= create_if_missing(ctx, ".gitignore", repository_templates.GITIGNORE)
+        # never replaced: a project's own rules, such as Git LFS ones, live there too
+        ok &= create_if_missing(ctx, ".gitattributes", repository_templates.GITATTRIBUTES)
         if not ctx.cfg.packaged:
             # A docs site has no importable module, and Jython scripts aren't a Python 3 package,
             # so uv must not try to build/install it: it only installs the dev tools.

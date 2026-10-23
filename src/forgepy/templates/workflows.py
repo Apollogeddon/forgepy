@@ -6,8 +6,8 @@ from typing import Literal
 
 # The generated .github/workflows/.index.yml: each job calls one forgepy pipeline, so a run page reads
 # <pipeline> / <stage>. Pull requests run the checks, main runs release-please and, on a release, the checks
-# again before shipping, and patch upgrades vulnerable dependencies weekly, on a manual run and after a
-# Dependabot merge.
+# again before shipping, and patch proposes a refresh of the files forgepy manages weekly, on a manual run and
+# after a Dependabot merge. Dependabot security updates upgrade vulnerable dependencies.
 
 PipelineMode = Literal["library", "service", "website"]
 
@@ -33,13 +33,18 @@ on:
 concurrency:
   # a pull request's newer run replaces its older one; every other run has a group of its own, so a run on
   # main, running or queued, is never cancelled and a release is never created without being published
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
+
+# nothing by default: each job grants its pipeline only what that needs
+permissions: {}
 
 jobs:
 """
 
 _RELEASED = "needs.version.outputs.new_release_published == 'true'"
+# false when the field is missing, as on a scheduled run, so the fallback is a private repository's behaviour
+_PUBLIC = "github.event.repository.private == false"
 
 
 def _expr(expression: str) -> str:
@@ -51,6 +56,9 @@ class IndexWorkflowOptions:
     mode: PipelineMode
     debian: bool = False
     docker: bool = False
+    # the check pipeline's Windows and macOS stages, which a website's has none of
+    windows: bool = False
+    macos: bool = False
     testing: bool = True
     versioning: bool = True
     # a --jython project's scripts are deployed as they are, so there's nothing to build
@@ -66,9 +74,11 @@ class PipelineJob:
     needs: list[str] = field(default_factory=list[str])
     condition: str = ""
     inputs: dict[str, str | bool] = field(default_factory=dict[str, str | bool])
+    # each by name: secrets: inherit would hand every repository secret to a workflow in another repository
+    secrets: dict[str, str] = field(default_factory=dict[str, str])
 
     def render(self) -> str:
-        lines = [f"  # {self.comment}"] if self.comment else []
+        lines = [f"  # {line}" for line in self.comment.splitlines()]
         lines.append(f"  {self.id}:")
         if self.needs:
             lines.append(f"    needs: {self.needs[0] if len(self.needs) == 1 else '[' + ', '.join(self.needs) + ']'}")
@@ -81,6 +91,9 @@ class PipelineJob:
                 f"      {key}: {str(value).lower() if isinstance(value, bool) else value}"
                 for key, value in self.inputs.items()
             )
+        if self.secrets:
+            lines.append("    secrets:")
+            lines.extend(f"      {key}: {value}" for key, value in self.secrets.items())
         lines.append("    permissions:")
         lines.extend(f"      {key}: {value}" for key, value in self.permissions.items())
         return "\n".join(lines) + "\n"
@@ -92,8 +105,13 @@ def pipeline_inputs(cfg: IndexWorkflowOptions) -> dict[str, str | bool]:
     --no-testing turns off the test stage and --jython the build stage. --no-versioning leaves out the
     version job, and with it the release testing and publish; --no-linting needs nothing, as forgepy's
     toolchain always installs ruff and basedpyright, which run on their defaults without a project config.
+    --windows and --macos turn on the stages that test and build on them.
     """
     inputs: dict[str, str | bool] = {}
+    if cfg.windows:
+        inputs["test_windows"] = "windows-latest"
+    if cfg.macos:
+        inputs["test_macos"] = "macos-latest"
     if not cfg.testing:
         inputs["run_tests"] = False
     if not cfg.build:
@@ -113,9 +131,14 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
         jobs.append(
             PipelineJob(
                 id="version",
-                comment="release-please, on main",
+                comment=(
+                    "release-please, on main; with the RELEASE_APP_CLIENT_ID variable and RELEASE_APP_PRIVATE_KEY\n"
+                    "secret set, it runs as that GitHub App, so its release pull requests run the checks"
+                ),
                 condition="github.event_name != 'pull_request' && github.event_name != 'schedule'",
                 pipeline="version",
+                inputs={"app_client_id": _expr("vars.RELEASE_APP_CLIENT_ID")},
+                secrets={"APP_PRIVATE_KEY": _expr("secrets.RELEASE_APP_PRIVATE_KEY")},
                 permissions={"contents": "write", "pull-requests": "write"},
             )
         )
@@ -170,11 +193,15 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
         jobs.append(
             PipelineJob(
                 id="publish",
-                comment="the release's package, to PyPI through Trusted Publishing",
+                comment=(
+                    "the release's package, to PyPI through Trusted Publishing, and its build provenance,\n"
+                    "which a free plan only attests in a public repository"
+                ),
                 needs=["version", checks],
                 condition=f"{_checks_passed(checks)} && {_RELEASED}",
                 pipeline="publish",
-                permissions={"contents": "read", "id-token": "write"},
+                inputs={"attest": _expr(_PUBLIC)},
+                permissions={"contents": "read", "id-token": "write", "attestations": "write"},
             )
         )
     elif cfg.versioning and cfg.debian:
@@ -199,11 +226,13 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
         jobs.append(
             PipelineJob(
                 id="pages",
-                comment="a release, to GitHub Pages" if cfg.versioning else "every change to main, to GitHub Pages",
+                comment=("a release" if cfg.versioning else "every change to main")
+                + ", to GitHub Pages, which a free plan only serves from a public repository;\n"
+                "a paid plan can drop the visibility check",
                 needs=["version", checks] if cfg.versioning else [checks],
-                condition=f"{_checks_passed(checks)} && {_RELEASED}"
+                condition=f"{_checks_passed(checks)} && {_RELEASED} && {_PUBLIC}"
                 if cfg.versioning
-                else "github.ref == 'refs/heads/main' && github.event_name != 'pull_request'",
+                else f"github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && {_PUBLIC}",
                 pipeline="pages",
                 permissions={"pages": "write", "id-token": "write"},
             )
@@ -214,14 +243,14 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
             id="patch",
             comment=(
                 "weekly, on a manual run and after a Dependabot merge: "
-                "forgepy's configs refreshed and vulnerable packages upgraded on main"
+                "a pull request refreshing the files forgepy manages"
             ),
             condition=(
                 "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
                 " || github.event_name == 'repository_dispatch'"
             ),
             pipeline="patch",
-            permissions={"contents": "write"},
+            permissions={"contents": "write", "pull-requests": "write"},
         )
     )
 

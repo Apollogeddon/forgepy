@@ -85,6 +85,8 @@ class WorkflowFeature(Feature):
                 mode=mode,
                 debian=cfg.debian,
                 docker=cfg.docker,
+                windows=cfg.windows,
+                macos=cfg.macos,
                 testing=cfg.testing,
                 versioning=cfg.versioning,
                 build=not cfg.jython,

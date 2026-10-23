@@ -115,13 +115,15 @@ forgepy --version
 | `--all`, `--no-all` | Turn every standard feature on or off at once. An explicit flag such as `--testing` still wins. |
 | `--docker` | Add a `Dockerfile` and a container CI job. Not available with `--library`. |
 | `--debian` | Add nFPM-based `.deb` packaging. `--backend` only. |
+| `--windows` | Test and build on Windows too, in CI. Not available with `--website`. See [Windows and macOS](configuration.md#windows-and-macos). |
+| `--macos` | Test and build on macOS too, in CI. Not available with `--website`. |
 | `--jython` | Scripts that run on Jython 2.7: no packaging, lint rules that keep Python 2 syntax, and a vermin compatibility check. `--backend` only; needs linting, and can't be combined with `--docker` or `--debian`. See [Jython projects](configuration.md#jython-projects). |
 | `--force` | Overwrite existing config files and tasks, and remove the files of features you turned off. |
 | `--dry-run` | Show what would change without writing anything. |
 | `--python VERSION` | Target Python version, a minor or a patch release (default: the project's `.python-version`, else the lower bound of its `requires-python`, else Forge.py's default). With `--debian`, no newer than Debian's own `python3`. |
 | `-C DIR`, `--path DIR` | Target directory (default: the current directory). |
 
-`--website` scaffolds a static documentation site built with Zensical: `mkdocs.yml`, which Zensical reads as its configuration, and `docs/index.md`. There is no Python package. `uv run poe dev` serves the site locally with live reload, and `uv run poe build` writes it to `dist/`. In CI, the `website` pipeline builds the site and `pages` deploys `dist/` to GitHub Pages. The `website` pipeline can also check the built site's links and accessibility, and run a command that generates content before the build; see [Site checks](workflows/reference.md#site-checks).
+`--website` scaffolds a static documentation site built with Zensical: `mkdocs.yml`, which Zensical reads as its configuration, and `docs/index.md`. There is no Python package. `uv run poe dev` serves the site locally with live reload, and `uv run poe build` writes it to `dist/`. In CI, the `website` pipeline builds the site and `pages` deploys `dist/` to GitHub Pages, from a public repository (on GitHub Free, Pages needs one). The `website` pipeline can also check the built site's links and accessibility, and run a command that generates content before the build; see [Site checks](workflows/reference.md#site-checks).
 
 `--no-testing`, `--no-versioning` and `--jython` also turn off the matching jobs and stages in the generated `.github/workflows/.index.yml`; see [Generated workflow](workflows/overview.md#generated-workflow). If `.github/workflows/index.yml` calls forgepy's pipelines, `init` removes it; see [An existing `index.yml`](workflows/overview.md#an-existing-indexyml).
 
@@ -157,6 +159,7 @@ A default `forgepy init` (backend) produces:
 │   └── __main__.py
 ├── tests/test_placeholder.py
 ├── .editorconfig
+├── .gitattributes              # LF on every platform
 ├── .gitignore
 ├── .pre-commit-config.yaml
 ├── .python-version

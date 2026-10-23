@@ -5,6 +5,7 @@ import itertools
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tomllib
@@ -21,11 +22,38 @@ from forgepy.templates import legacy as legacy_templates
 from forgepy.templates import workflows as workflow_templates
 from forgepy.utils.filesystem import MemoryFileSystem
 
+
+def _bash() -> str:
+    """The bash step scripts run in: on Windows, Git's own, as a bare "bash" finds System32's WSL launcher."""
+    if os.name != "nt":
+        return "bash"
+    # git.exe sits in Git/cmd, Git/bin or Git/mingw64/bin, and bash.exe in Git/bin
+    git = Path(shutil.which("git") or "git").resolve()
+    return next((str(p / "bin" / "bash.exe") for p in git.parents if (p / "bin" / "bash.exe").is_file()), "bash")
+
+
+BASH = _bash()
+
+
+def _run_step(script: str, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    """Runs a step's script with bash, which reads it on stdin: Git for Windows' bash re-parses its command line,
+    dropping every backslash from a -c script."""
+    return subprocess.run([BASH, "-e", "-s"], input=script, text=True, encoding="utf-8", **kwargs)  # noqa: PLW1510
+
+
+def _with_fakes(bin_dir: Path, script: str) -> str:
+    """The script, finding bin_dir's fakes first: Git for Windows' bash puts its own tools ahead of PATH."""
+    fakes = f'"$(cygpath -u {shlex.quote(str(bin_dir))})"' if os.name == "nt" else shlex.quote(str(bin_dir))
+    return f'PATH={fakes}:"$PATH"\n{script}'
+
+
 WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
 FIXTURES = Path(__file__).parent / "fixtures" / "legacy"
 # PyYAML can produce non-str keys (YAML 1.1 parses a bare `on:` mapping key as
 # the bool True), so keys are Any here rather than str.
 YamlDoc = dict[Any, Any]
+
+needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the github-script body")
 
 FILES = sorted(path.name for path in WORKFLOWS_DIR.iterdir() if path.suffix == ".yml")
 ROOTS = [name for name in FILES if name.startswith(".")]
@@ -33,7 +61,7 @@ PIPELINES = [name for name in FILES if not name.startswith(".")]
 
 # The spec's stages: a run page reads <pipeline> / <stage>, the same words in every forge
 STAGES: dict[str, list[str]] = {
-    "library": ["lint", "scan", "test", "build"],
+    "library": ["lint", "scan", "test", "test (windows)", "test (macos)", "build"],
     "service": ["lint", "scan", "test", "test (windows)", "test (macos)", "test (databases)", "build"],
     "website": ["lint", "scan", "test", "build", "check", "check (lighthouse)"],
     "debian": ["build", "test"],
@@ -106,6 +134,14 @@ for _mode, _debian, _docker, _versioning, _testing, _build in itertools.product(
             ),
         )
     )
+# --windows and --macos, which a website has no stages for
+MODES.extend(
+    (f"{_mode} windows macos", workflow_templates.IndexWorkflowOptions(mode=_mode, windows=True, macos=True))
+    for _mode in ("library", "service")
+)
+MODES.append(
+    ("service jython windows", workflow_templates.IndexWorkflowOptions(mode="service", build=False, windows=True))
+)
 GENERATED = [(name, workflow_templates.index_workflow(cfg)) for name, cfg in MODES]
 
 
@@ -145,8 +181,8 @@ def test_pipeline_names_every_job_with_a_stage_from_the_spec(name: str):
     for job_id, job in _jobs(name).items():
         assert "name" in job, f"{name}:{job_id} has no name"
         assert _in_vocabulary(pipeline, job["name"]), f"{name}:{job_id} is named {job['name']!r}"
-        # the job id is the stage in kebab case
-        assert job_id == _kebab(job["name"])
+        # the job id is the stage in kebab case; a matrix's legs are named after their leg
+        assert job_id == ("test-versions" if job["name"] == "test (${{ matrix.version }})" else _kebab(job["name"]))
 
 
 @pytest.mark.parametrize("name", FILES)
@@ -158,9 +194,9 @@ def test_names_every_step(name: str):
 
 @pytest.mark.parametrize("name", PIPELINES)
 def test_pipeline_jobs_ask_for_their_own_permissions(name: str):
-    """A job that asks for none takes its caller's grant, which only publish's assets and attest do on purpose."""
+    """A job that asks for none takes its caller's grant, which only publish's assets and attest, and patch, do."""
     for job_id, job in _jobs(name).items():
-        if (name, job_id) in {("publish.yml", "assets"), ("publish.yml", "attest")}:
+        if (name, job_id) in {("publish.yml", "assets"), ("publish.yml", "attest"), ("patch.yml", "update")}:
             assert "permissions" not in job
         else:
             assert "permissions" in job, f"{name}:{job_id}"
@@ -178,6 +214,34 @@ def test_workflows_and_every_generated_index_pass_actionlint(tmp_path: Path):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+# every action at a commit, which a moved tag can't change, with the release it is as a comment for Dependabot
+_USES = re.compile(r"^\s*(?:-\s+)?uses:\s+(\S+)(.*)$", re.MULTILINE)
+
+
+@pytest.mark.parametrize("name", FILES)
+def test_pins_every_action_to_a_commit(name: str):
+    for ref, rest in _USES.findall((WORKFLOWS_DIR / name).read_text(encoding="utf-8")):
+        if ref.startswith("./"):
+            continue
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+(/[\w./-]+)?@[0-9a-f]{40}", ref), f"{name}: {ref}"
+        assert re.fullmatch(r" # v\d+\.\d+\.\d+", rest), f"{name}: {ref} has no version comment"
+
+
+# nothing a job doesn't ask for; publish's assets and attest take their caller's grant on purpose
+@pytest.mark.parametrize("name", FILES)
+def test_grants_nothing_by_default(name: str):
+    doc = _load(name)
+    if name in ("publish.yml", "patch.yml"):
+        assert "permissions" not in doc
+    else:
+        assert doc["permissions"] == {}
+
+
+@pytest.mark.parametrize(("name", "text"), GENERATED, ids=[name for name, _ in GENERATED])
+def test_generated_index_grants_nothing_by_default(name: str, text: str):  # noqa: ARG001
+    assert _load_text(text)["permissions"] == {}
+
+
 # --- wiring: a caller's inputs, secrets, outputs and permissions match what it calls -------------
 
 _LEVELS = {"none": 0, "read": 1, "write": 2}
@@ -186,7 +250,7 @@ _LEVELS = {"none": 0, "read": 1, "write": 2}
 def _expect_wiring(caller: str, doc: YamlDoc, resolve: Callable[[str], str | None]) -> None:
     for job_id, job in doc["jobs"].items():
         if "uses" not in job:
-            assert job_id == "changes", f"{caller}:{job_id} runs steps itself"
+            assert job_id in ("changes", "scorecard"), f"{caller}:{job_id} runs steps itself"
             continue
         callee = resolve(job["uses"])
         assert callee is not None, f"{caller}:{job_id} calls {job['uses']}"
@@ -203,8 +267,11 @@ def _expect_wiring(caller: str, doc: YamlDoc, resolve: Callable[[str], str | Non
         for key, spec in declared.items():
             if spec.get("required"):
                 assert key in passed, f"{caller}:{job_id} misses required {key}"
-        # the pipelines only use GITHUB_TOKEN, which they get without inheriting every secret
-        assert "secrets" not in job, f"{caller}:{job_id} passes secrets"
+        # secrets go by name, never inherit, which hands every repository secret to a workflow elsewhere
+        secrets: YamlDoc | str = job.get("secrets") or {}
+        assert isinstance(secrets, dict), f"{caller}:{job_id} inherits secrets"
+        for key in secrets:
+            assert key in (call.get("secrets") or {}), f"{caller}:{job_id} passes undeclared secret {key!r}"
         # GitHub refuses the whole run when a called job asks for more than its caller grants
         grant: YamlDoc = job.get("permissions") or {}
         for called_id, called in _jobs(callee).items():
@@ -229,12 +296,19 @@ def _at_main(uses: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _dispatch_step() -> YamlDoc:
+    scripted = (step for step in _steps("merge.yml", "squash") if "script" in step.get("with", {}))
+    return next(step for step in scripted if "createDispatchEvent" in step["with"]["script"])
+
+
 def _merge_dispatch_type() -> str:
-    step = next(s for s in _steps("merge.yml", "squash") if "createDispatchEvent" in s["with"]["script"])
-    return cast(str, step["env"]["DISPATCH_TYPE"])
+    return cast(str, _dispatch_step()["env"]["DISPATCH_TYPE"])
 
 
-_CONCURRENCY = {"group": "${{ github.workflow }}-${{ github.head_ref || github.run_id }}", "cancel-in-progress": True}
+_CONCURRENCY = {
+    "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}",
+    "cancel-in-progress": True,
+}
 _PATCH_EVENTS = (
     "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
     " || github.event_name == 'repository_dispatch'"
@@ -270,16 +344,31 @@ class TestOwnIndex:
     def test_has_the_same_concurrency_as_a_generated_index(self):
         assert self.doc["concurrency"] == _load_text(GENERATED[0][1])["concurrency"] == _CONCURRENCY
 
-    def test_patches_the_tool_and_the_docs_one_after_the_other_on_the_schedule_a_manual_run_and_a_merge(self):
+    def test_refreshes_the_docs_sites_forgepy_files_on_the_schedule_a_manual_run_and_a_merge(self):
         jobs = self.doc["jobs"]
-        assert jobs["patch"]["if"] == _PATCH_EVENTS
-        assert _PATCH_EVENTS in jobs["patch-docs"]["if"]
-        assert jobs["patch-docs"]["needs"] == "patch"
+        # the tool has no .forgepy/ of its own
+        assert "patch" not in jobs
+        assert jobs["patch-docs"]["if"] == _PATCH_EVENTS
         assert jobs["patch-docs"]["with"]["working_directory"] == "docs"
         assert {"schedule", "workflow_dispatch", "repository_dispatch"} <= set(_on(self.doc))
 
     def test_listens_for_the_merge_pipelines_dispatch(self):
         assert _on(self.doc)["repository_dispatch"]["types"] == [_merge_dispatch_type()]
+
+    def test_scores_itself_with_scorecard_on_main_and_weekly_only_when_public(self):
+        scorecard = self.doc["jobs"]["scorecard"]
+        assert (
+            "github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private == false"
+            in scorecard["if"]
+        )
+        # a scheduled run's event has no repository, so the weekly run reads the run's own visibility
+        assert "github.event_name == 'schedule' && github.repository_visibility == 'public'" in scorecard["if"]
+        assert scorecard["permissions"] == {"contents": "read", "security-events": "write", "actions": "read"}
+        score = next(step for step in scorecard["steps"] if "ossf/scorecard-action@" in step.get("uses", ""))
+        assert score["with"]["publish_results"] is False
+        upload = next(step for step in scorecard["steps"] if "codeql-action/upload-sarif@" in step.get("uses", ""))
+        assert upload["with"]["sarif_file"] == score["with"]["results_file"]
+        assert "schedule" in _on(self.doc)
 
     def test_merges_dependabot_pull_requests_only_after_every_check(self):
         merge = self.doc["jobs"]["merge"]
@@ -353,7 +442,33 @@ def test_generated_index_checks_a_release_before_shipping_it_and_every_pull_requ
     assert "needs.version.outputs.new_release_published == 'true'" in jobs["library"]["if"]
     assert "github.event_name == 'pull_request'" in jobs["library"]["if"]
     assert "needs.library.result == 'success'" in jobs["publish"]["if"]
-    assert jobs["publish"]["permissions"] == {"contents": "read", "id-token": "write"}
+    assert jobs["publish"]["permissions"] == {"contents": "read", "id-token": "write", "attestations": "write"}
+
+
+_PUBLIC = "github.event.repository.private == false"
+
+
+# a free plan has artifact attestations and GitHub Pages only in a public repository; a missing
+# field, as on a scheduled run, reads as private, which always works
+def test_generated_library_attests_its_release_only_from_a_public_repository():
+    assert _generated_jobs(mode="library")["publish"]["with"] == {"attest": f"${{{{ {_PUBLIC} }}}}"}
+    assert "attest" not in _generated_jobs(debian=True)["publish"]["with"]
+
+
+@pytest.mark.parametrize("versioning", [True, False])
+def test_generated_website_deploys_only_from_a_public_repository(*, versioning: bool):
+    assert _generated_jobs(mode="website", versioning=versioning)["pages"]["if"].endswith(f" && {_PUBLIC} }}}}")
+
+
+def test_own_pages_deploys_only_from_a_public_repository():
+    assert _load(".index.yml")["jobs"]["pages"]["if"].endswith(f" && {_PUBLIC}")
+
+
+def test_never_negates_the_private_flag():
+    """!github.event.repository.private is true when the field is missing, which would turn on public-only steps."""
+    texts = [(WORKFLOWS_DIR / name).read_text(encoding="utf-8") for name in FILES] + [text for _, text in GENERATED]
+    for text in texts:
+        assert "!github.event.repository.private" not in text
 
 
 def test_generated_index_pushes_the_image_only_on_a_release():
@@ -374,7 +489,8 @@ def test_generated_index_attaches_the_deb_to_the_release():
 
 def test_generated_index_deploys_every_change_to_main_when_the_site_isnt_versioned():
     assert _generated_jobs(mode="website", versioning=False)["pages"]["if"] == (
-        "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}"
+        "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
+        " && github.event.repository.private == false }}"
     )
 
 
@@ -436,9 +552,10 @@ CHECKS = ["library.yml", "service.yml", "website.yml"]
 def test_check_pipelines_share_their_lint_scan_test_and_build_stages(name: str):
     jobs = _jobs(name)
     assert [jobs[stage]["name"] for stage in ("lint", "scan", "test", "build")] == ["lint", "scan", "test", "build"]
-    assert jobs["test"]["needs"] == ["lint", "scan"]
-    # only needs the lint and scan to pass, so it runs alongside the tests
-    assert jobs["build"]["needs"] == ["lint", "scan"]
+    assert jobs["scan-osv"]["name"] == "scan (osv)"
+    assert jobs["test"]["needs"] == ["lint", "scan", "scan-osv"]
+    # only needs the lint and scans to pass, so it runs alongside the tests
+    assert jobs["build"]["needs"] == ["lint", "scan", "scan-osv"]
     assert jobs["test"]["if"] == "inputs.run_tests"
 
 
@@ -533,7 +650,9 @@ def test_build_stage_runs_the_build_command_through_the_environment(name: str, d
     assert build["env"] == {"BUILD_COMMAND": "${{ inputs.build_command }}"}
 
 
-@pytest.mark.parametrize(("name", "job"), [(name, job) for name in CHECKS for job in ("lint", "scan", "test", "build")])
+@pytest.mark.parametrize(
+    ("name", "job"), [(name, job) for name in CHECKS for job in ("lint", "scan", "scan-osv", "test", "build")]
+)
 def test_jobs_check_out_the_ref(name: str, job: str):
     assert _step(name, job, "Check out")["with"]["ref"] == "${{ inputs.ref }}"
 
@@ -553,7 +672,8 @@ def test_pre_build_command_runs_before_installing(name: str, job: str):
     assert _workflow_call(name)["secrets"]["GH_TOKEN"]["required"] is False
 
 
-_SETUP_PYTHON = re.compile(r"uses: actions/setup-python@\S+\n\s+with:\n\s+python-version: (.+)")
+_SETUP_PYTHON = re.compile(r"uses: actions/setup-python@\S+(?: #[^\n]*)?\n\s+with:\n\s+python-version: (.+)")
+_MATRIX_PYTHON = "${{ matrix.version }}"
 
 
 @pytest.mark.parametrize(
@@ -562,7 +682,8 @@ _SETUP_PYTHON = re.compile(r"uses: actions/setup-python@\S+\n\s+with:\n\s+python
 def test_setup_python_uses_the_resolved_version(name: str):
     """The input wins, then the project's .python-version, then forgepy's default, which must match what init pins."""
     content = (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
-    setups = _SETUP_PYTHON.findall(content)
+    # test-versions sets up each version its matrix lists
+    setups = [version for version in _SETUP_PYTHON.findall(content) if version != _MATRIX_PYTHON]
     assert setups
     assert all(version == "${{ steps.python.outputs.version }}" for version in setups)
     assert re.findall(r"else version=(\S+)", content) == [DEFAULT_PYTHON_VERSION] * len(setups)
@@ -574,6 +695,120 @@ def test_python_version_input_defaults_to_empty(name: str):
     inputs: YamlDoc = _workflow_call(name).get("inputs") or {}
     if "python_version" in inputs:
         assert inputs["python_version"]["default"] == ""
+
+
+# --- more platforms and Python versions -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+@pytest.mark.parametrize("key", ["test_windows", "test_macos", "test_versions"])
+def test_check_pipelines_test_on_more_platforms_and_versions_only_when_asked(name: str, key: str):
+    assert _workflow_call(name)["inputs"][key]["default"] == ""
+    job = _jobs(name)[key.replace("_", "-")]
+    if key == "test_versions":
+        assert job["if"] == f"inputs.run_tests && inputs.{key} != ''"
+    else:
+        assert job["if"] == f"inputs.{key} != '' && (inputs.run_tests || inputs.run_build)"
+    assert job["needs"] == ["lint", "scan", "scan-osv"]
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+def test_versions_stage_runs_the_tests_only(name: str):
+    steps = _jobs(name)["test-versions"]["steps"]
+    # the tests only: the Linux stage reports the coverage, and the build stage builds
+    assert [step["run"] for step in steps if step["name"] == "Test"] == [".venv/bin/python -m pytest"]
+    assert not any("upload-artifact" in step.get("uses", "") for step in steps)
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+@pytest.mark.parametrize(("os_name", "default"), [("windows", "windows-latest"), ("macos", "macos-latest")])
+def test_platform_stages_take_a_runner_label_or_one_with_an_environment(name: str, os_name: str, default: str):
+    job = _jobs(name)[f"test-{os_name}"]
+    key = f"inputs.test_{os_name}"
+    assert job["name"] == f"test ({os_name})"
+    assert job["runs-on"] == f"${{{{ startsWith({key}, '{{') && (fromJSON({key}).runs_on || '{default}') || {key} }}}}"
+    assert job["defaults"]["run"]["shell"] == "bash"
+    env = next(step for step in job["steps"] if step["name"] == "Set the runner's environment")
+    assert env["if"] == f"startsWith({key}, '{{')"
+    assert env["env"] == {"TARGET": f"${{{{ {key} }}}}"}
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+@pytest.mark.parametrize("os_name", ["windows", "macos"])
+def test_platform_stages_set_up_test_with_the_shorter_suite_and_build(name: str, os_name: str):
+    steps = _jobs(name)[f"test-{os_name}"]["steps"]
+    names = [step["name"] for step in steps]
+    order = ["Set the runner's environment", "Run the setup script", "Install dependencies", "Test", "Build"]
+    assert [n for n in names if n in order] == order
+    by_name = {step["name"]: step for step in steps}
+    # a path relative to working_directory, through env rather than into the script
+    setup = by_name["Run the setup script"]
+    assert setup["if"] == "inputs.setup_script != ''"
+    assert setup["env"]["SCRIPT"] == "${{ inputs.setup_script }}"
+    assert setup["run"] == 'bash "$SCRIPT"'
+    test = by_name["Test"]
+    assert test["if"] == "inputs.run_tests"
+    assert test["env"] == {"TASK": "${{ inputs.extra_test_task }}"}
+    assert test["run"] == 'uv run poe "$TASK"'
+    assert by_name["Build"]["if"] == "inputs.run_build"
+    assert by_name["Build"]["run"] == _step(name, "build", "Build")["run"]
+    upload = next(step for step in steps if "upload-artifact" in step.get("uses", ""))
+    assert upload["with"] == {
+        "name": f"${{{{ inputs.artifact_name }}}}-{os_name}",
+        "path": "${{ inputs.working_directory }}/dist",
+        "if-no-files-found": "ignore",
+    }
+    inputs = _workflow_call(name)["inputs"]
+    assert inputs["extra_test_task"]["default"] == "test"
+    assert inputs["setup_script"]["default"] == ""
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="needs jq")
+def test_platform_stage_sets_the_runner_environment_from_the_json_form(tmp_path: Path):
+    step = _step("library.yml", "test-windows", "Set the runner's environment")
+    github_env = tmp_path / "env"
+    target = '{"runs_on": "windows-latest", "env": {"CGO_ENABLED": "0", "GREETING": "hello world"}}'
+    env = {**os.environ, "TARGET": target, "GITHUB_ENV": str(github_env)}
+    _run_step(step["run"], env=env, check=True)
+    assert github_env.read_text(encoding="utf-8").splitlines() == ["CGO_ENABLED=0", "GREETING=hello world"]
+
+
+@pytest.mark.parametrize("name", ["library.yml", "service.yml"])
+def test_versions_stage_installs_each_version_without_leaking_it_into_the_tests(name: str):
+    job = _jobs(name)["test-versions"]
+    assert job["strategy"]["matrix"]["version"] == "${{ fromJSON(inputs.test_versions || '[]') }}"
+    assert job["strategy"]["fail-fast"] is False
+    assert "env" not in job
+    install = next(step for step in job["steps"] if step["name"] == "Install dependencies")
+    assert 'uv sync --locked --python "$VERSION"' in install["run"]
+
+
+def _on_a_release(value: str) -> str:
+    return f"${{{{ needs.version.outputs.new_release_published == 'true' && {value} || '' }}}}"
+
+
+# a release on every platform and supported Python; a pull request on Linux and .python-version's, to stay cheap
+def test_own_index_tests_a_release_on_every_platform_and_supported_python():
+    library = _load(".index.yml")["jobs"]["library"]["with"]
+    assert library["test_windows"] == _on_a_release("'windows-latest'")
+    assert library["test_macos"] == _on_a_release("'macos-latest'")
+    root = WORKFLOWS_DIR.parent.parent
+    requires = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["requires-python"]
+    floor = re.fullmatch(r">=(\d+\.\d+)", requires)
+    assert floor
+    own = (root / ".python-version").read_text(encoding="utf-8").strip()
+    minors = range(_minor(floor.group(1))[1], _minor(own)[1])
+    assert library["test_versions"] == _on_a_release(f"'{json.dumps([f'3.{minor}' for minor in minors])}'")
+
+
+@pytest.mark.parametrize(("name", "text"), GENERATED, ids=[name for name, _ in GENERATED])
+def test_generated_index_tests_on_windows_and_macos_only_when_asked(name: str, text: str):
+    jobs = _load_text(text)["jobs"]
+    checks = next(job for job_id, job in jobs.items() if job_id in ("library", "service", "website"))
+    inputs = checks.get("with", {})
+    assert inputs.get("test_windows") == ("windows-latest" if "windows" in name.split() else None)
+    assert inputs.get("test_macos") == ("macos-latest" if "macos" in name.split() else None)
+    assert "test_versions" not in text
 
 
 # --- website site checks --------------------------------------------------------------------------
@@ -618,7 +853,7 @@ def test_site_checks_only_check_what_is_asked():
 
 def test_link_check_is_internal_unless_asked():
     step = _site_step("Check links")
-    assert re.fullmatch(r"lycheeverse/lychee-action@v\d+", step["uses"])
+    assert re.fullmatch(r"lycheeverse/lychee-action@[0-9a-f]{40}", step["uses"])
     assert "${{ !inputs.check_external_links && '--offline' || '' }}" in step["with"]["args"]
     assert "--root-dir '${{ steps.site.outputs.root }}'" in step["with"]["args"]
     assert step["with"]["fail"] is True
@@ -636,16 +871,17 @@ def test_site_is_staged_under_base_path(tmp_path: Path, base_path: str, base: st
         "<urlset><url><loc>https://owner.github.io/my-site/</loc></url></urlset>", encoding="utf-8"
     )
     output = tmp_path / "output"
-    env = {"PATH": os.environ["PATH"], "BASE_PATH": base_path, "BUILD": str(build)}
+    env = {**os.environ, "BASE_PATH": base_path, "BUILD": str(build)}
     env |= {"RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output)}
-    subprocess.run(["bash", "-e", "-c", _site_step("Stage the site for checking")["run"]], env=env, check=True)
+    _run_step(_site_step("Stage the site for checking")["run"], env=env, check=True)
     outputs = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
     root = tmp_path / "site"
-    assert outputs["root"] == str(root)
+    # as the shell joined it, which on Windows mixes separators
+    assert Path(outputs["root"]) == root
     assert outputs["base"] == base
     assert (root / base.strip("/") / "index.html").is_file()
     # links to the site's own address are checked in the staged copy
-    assert outputs["remap"] == rf"--remap '^https://owner\.github\.io/ file://{root}/'"
+    assert outputs["remap"] == rf"--remap '^https://owner\.github\.io/ file://{outputs['root']}/'"
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js")
@@ -687,6 +923,39 @@ def test_version_counts_any_package_release_only_for_the_root_package():
     assert root_clause.startswith("(jobs.release.outputs.releases_created")
 
 
+def test_release_please_runs_as_a_github_app_only_when_one_is_set():
+    inputs = _workflow_call("version.yml")["inputs"]
+    assert inputs["app_client_id"]["default"] == ""
+    assert _workflow_call("version.yml")["secrets"]["APP_PRIVATE_KEY"]["required"] is False
+    app = _step("version.yml", "release", "Create the app's token")
+    assert app["if"] == "inputs.app_client_id != ''"
+    assert app["with"] == {
+        "client-id": "${{ inputs.app_client_id }}",
+        "private-key": "${{ secrets.APP_PRIVATE_KEY }}",
+        "permission-contents": "write",
+        "permission-pull-requests": "write",
+    }
+    release = _step("version.yml", "release", "Release")
+    assert release["with"]["token"] == "${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}"  # noqa: S105
+
+
+_APP_INPUTS = {"app_client_id": "${{ vars.RELEASE_APP_CLIENT_ID }}"}
+_APP_SECRETS = {"APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"}
+
+
+@pytest.mark.parametrize(("name", "text"), [(".index.yml", None), *GENERATED[:1]], ids=["own", "generated"])
+def test_version_jobs_pass_the_release_app_when_one_is_set(name: str, text: str | None):
+    version = (_load(name) if text is None else _load_text(text))["jobs"]["version"]
+    assert _APP_INPUTS.items() <= version["with"].items()
+    assert version["secrets"] == _APP_SECRETS
+
+
+# with GITHUB_TOKEN no checks start on a release pull request anyway; with an app's token they should run
+@pytest.mark.parametrize("text", [(WORKFLOWS_DIR / ".index.yml").read_text("utf-8"), *(t for _, t in GENERATED)])
+def test_checks_run_on_release_please_branches(text: str):
+    assert "release-please--" not in text
+
+
 def test_release_pull_request_requests_a_review():
     review = _step("version.yml", "release", "Request a review")
     assert review["if"] == "steps.release.outputs.pr != ''"
@@ -714,14 +983,74 @@ def test_squash_needs_the_checks_and_dependabot_to_open_the_pull_request_and_mak
     assert "github.event.pull_request.user.login == 'dependabot[bot]' && " in gate
     assert "github.actor == 'dependabot[bot]' && " in gate
     assert "!startsWith(github.head_ref, 'dependabot/github_actions/')" in gate
+    # a Docker update to an image a workflow runs in changes a workflow file too
+    assert "!startsWith(github.head_ref, 'dependabot/docker/dot-github/workflows/')" in gate
     assert "||" not in gate
     assert _workflow_call("merge.yml")["inputs"]["checks_passed"]["default"] is False
 
 
+def test_squash_merges_only_a_pull_request_from_this_repository():
+    gate = str(_jobs("merge.yml")["squash"]["if"])
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in gate
+
+
+def test_squash_merges_any_update_without_reading_its_metadata():
+    # passing checks are the gate, whatever the update's size
+    assert [step["name"] for step in _steps("merge.yml", "squash")] == ["Enable auto-merge"]
+    assert "${{" not in _step("merge.yml", "squash", "Enable auto-merge")["with"]["script"]
+
+
+# runs the squash step's github-script body under Node, with GitHub's API answering as a branch with no
+# protection rules does, so the step merges straight away
+_SQUASH_HARNESS = """
+const calls = { notice: [], info: [], warning: [], graphql: [], merge: [], dispatch: [] };
+const record = (kind) => (message) => calls[kind].push(message);
+const core = { notice: record('notice'), info: record('info'), warning: record('warning') };
+const github = {
+  graphql: async (query, vars) => { calls.graphql.push(vars); throw new Error('Pull request is in clean status'); },
+  rest: {
+    pulls: { merge: async (args) => { calls.merge.push(args); } },
+    repos: { createDispatchEvent: async (args) => { calls.dispatch.push(args); } },
+  },
+};
+const context = {
+  repo: { owner: 'o', repo: 'r' },
+  payload: { pull_request: { number: 7, node_id: 'PR_7', head: { sha: 'abc123' }, base: { ref: 'main' } } },
+};
+const body = require('node:fs').readFileSync(process.argv[1], 'utf8');
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+new AsyncFunction('require', 'core', 'github', 'context', body)(require, core, github, context)
+  .then(() => console.log(JSON.stringify(calls)));
+"""
+
+
+def _run_squash(tmp_path: Path) -> dict[str, list[Any]]:
+    step = _step("merge.yml", "squash", "Enable auto-merge")
+    script = tmp_path / "squash.js"
+    script.write_text(step["with"]["script"], encoding="utf-8")
+    env = {**os.environ, "DISPATCH_TYPE": step["env"]["DISPATCH_TYPE"]}
+    node = cast(str, shutil.which("node"))
+    harness = [node, "-e", _SQUASH_HARNESS, str(script)]
+    out = subprocess.run(harness, env=env, capture_output=True, text=True, check=True)
+    return cast(dict[str, list[Any]], json.loads(out.stdout))
+
+
+@needs_node
+def test_squash_merges_at_the_commit_the_checks_ran_on(tmp_path: Path):
+    calls = _run_squash(tmp_path)
+    assert calls["graphql"] == [{"id": "PR_7", "oid": "abc123"}]
+    assert calls["merge"] == [{"owner": "o", "repo": "r", "pull_number": 7, "merge_method": "squash", "sha": "abc123"}]
+    assert len(calls["dispatch"]) == 1
+
+
+def test_squash_enables_auto_merge_only_for_the_checked_commit():
+    script = _step("merge.yml", "squash", "Enable auto-merge")["with"]["script"]
+    assert "expectedHeadOid: $oid" in script
+
+
 def test_squash_sends_the_auto_merged_dispatch_once_it_merges():
-    script = next(s for s in _steps("merge.yml", "squash") if "createDispatchEvent" in s["with"]["script"])
     assert _merge_dispatch_type() == "auto-merged"
-    assert "dispatchOnceMerged" in script["with"]["script"]
+    assert "dispatchOnceMerged" in _dispatch_step()["with"]["script"]
 
 
 # --- pages, publish and patch ---------------------------------------------------------------------
@@ -763,14 +1092,73 @@ def test_publish_attaches_assets_only_when_given_an_artifact():
     assert "throw new Error('assets needs tag_name" in script
 
 
-def test_patch_refreshes_forgepys_configs_then_upgrades_vulnerable_packages():
-    names = [step["name"] for step in _steps("patch.yml", "update")]
-    assert names.index("Refresh forgepy's configs") < names.index("Upgrade vulnerable packages")
-    assert _step("patch.yml", "update", "Refresh forgepy's configs")["run"] == "uv run --locked forgepy sync"
-    assert _step("patch.yml", "update", "Commit the patches")["with"]["file_pattern"] == "uv.lock"
-    # resolves from published metadata only, so no package's build code runs in a job that pushes to main
-    assert "uv lock --no-build" in _step("patch.yml", "update", "Upgrade vulnerable packages")["run"]
+def test_patch_only_refreshes_forgepys_files_and_leaves_vulnerable_packages_to_dependabot():
+    text = (WORKFLOWS_DIR / "patch.yml").read_text(encoding="utf-8")
+    for gone in ("osv-scanner", "uv lock", "--upgrade-package", "git-auto-commit-action"):
+        assert gone not in text
+    assert _step("patch.yml", "update", "Refresh forgepy's files")["run"] == "uv run --locked forgepy sync"
     assert _jobs("patch.yml")["update"]["if"] == "github.ref == 'refs/heads/main'"
+    # the caller's grant, so a caller from before patch opened pull requests still starts
+    assert "permissions" not in _jobs("patch.yml")["update"]
+    propose = _step("patch.yml", "update", "Propose the refresh")["with"]["script"]
+    assert "error.status !== 403" in propose
+    assert "grant this job pull-requests: write" in propose
+
+
+def test_patch_gives_its_token_only_to_the_push():
+    assert _step("patch.yml", "update", "Check out")["with"]["persist-credentials"] is False
+    for step in _steps("patch.yml", "update"):
+        if "secrets.GITHUB_TOKEN" in yaml.safe_dump(step):
+            assert step["name"] == "Push the refresh"
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _run_patch_push(tmp_path: Path, working_directory: str, *, change: bool) -> tuple[Path, Path]:
+    remote = tmp_path / "remote.git"
+    _git(tmp_path, "init", "-q", "--bare", str(remote))
+    repo = tmp_path / "repo"
+    project = repo / working_directory
+    (project / ".forgepy").mkdir(parents=True)
+    (project / ".forgepy" / "ruff.toml").write_text("old\n", encoding="utf-8")
+    _git(tmp_path, "init", "-q", "-b", "main", str(repo))
+    _git(repo, "add", ".")
+    _git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init")
+    _git(repo, "remote", "add", "origin", str(remote))
+    if change:
+        (project / ".forgepy" / "ruff.toml").write_text("new\n", encoding="utf-8")
+    step = _step("patch.yml", "update", "Push the refresh")
+    output = tmp_path / "output"
+    output.touch()
+    branch = "forgepy/sync" if working_directory == "." else f"forgepy/sync-{working_directory}"
+    env = {**os.environ, "GH_TOKEN": "token", "BRANCH": branch, "GITHUB_OUTPUT": str(output)}
+    _run_step(step["run"], cwd=project, env=env, check=True, capture_output=True)
+    return remote, output
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+@pytest.mark.parametrize(("working_directory", "branch"), [(".", "forgepy/sync"), ("docs", "forgepy/sync-docs")])
+def test_patch_pushes_a_refresh_to_its_own_branch_not_main(tmp_path: Path, working_directory: str, branch: str):
+    remote, output = _run_patch_push(tmp_path, working_directory, change=True)
+    assert _git(remote, "branch", "--format=%(refname:short)") == branch
+    assert _git(remote, "log", "-1", "--format=%s", branch) == "chore(deps): refresh the files forgepy manages"
+    assert output.read_text(encoding="utf-8") == f"branch={branch}\n"
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+def test_patch_pushes_nothing_when_nothing_changed(tmp_path: Path):
+    remote, output = _run_patch_push(tmp_path, ".", change=False)
+    assert _git(remote, "branch") == ""
+    assert output.read_text(encoding="utf-8") == ""
+    assert _step("patch.yml", "update", "Propose the refresh")["if"] == "steps.push.outputs.branch != ''"
+
+
+def test_patch_opens_a_pull_request_only_when_none_is_open():
+    script = _step("patch.yml", "update", "Propose the refresh")["with"]["script"]
+    assert script.index("pulls.list") < script.index("pulls.create")
+    assert "chore(deps): refresh the files forgepy manages" in script
 
 
 # --- debian and docker ----------------------------------------------------------------------------
@@ -802,7 +1190,7 @@ def test_debian_build_installs_its_tools_pinned_and_verified():
     runs = "\n".join(str(step.get("run", "")) for step in steps)
     assert not re.search(r"\|\s*(ba)?sh\b", runs)
     assert "releases/latest" not in runs
-    assert any(str(step.get("uses", "")).startswith("astral-sh/setup-uv@v") for step in steps)
+    assert any(str(step.get("uses", "")).startswith("astral-sh/setup-uv@") for step in steps)
     nfpm = _step("debian.yml", "build", "Install nfpm")
     assert re.fullmatch(r"\d+\.\d+\.\d+", nfpm["env"]["NFPM_VERSION"])
     assert re.fullmatch(r"[0-9a-f]{64}", nfpm["env"]["NFPM_SHA256"])
@@ -815,8 +1203,12 @@ def test_debian_build_refuses_an_nfpm_download_that_fails_its_checksum(tmp_path:
     bin_dir.mkdir()
     installed = tmp_path / "installed"
     # curl writes a tampered package; apt-get records whether it was asked to install anything
-    (bin_dir / "curl").write_text('#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\necho tampered > "$2"\n')
-    (bin_dir / "apt-get").write_text(f'#!/bin/sh\ntouch "{installed}"\n')
+    fakes = {
+        "curl": '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\necho tampered > "$2"\n',
+        "apt-get": f'#!/bin/sh\ntouch "{installed.as_posix()}"\n',
+    }
+    for tool, script in fakes.items():
+        (bin_dir / tool).write_text(script, encoding="utf-8", newline="\n")
     for tool in ("curl", "apt-get"):
         (bin_dir / tool).chmod(0o755)
     env = {
@@ -825,7 +1217,7 @@ def test_debian_build_refuses_an_nfpm_download_that_fails_its_checksum(tmp_path:
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "RUNNER_TEMP": str(tmp_path),
     }
-    result = subprocess.run(["bash", "-e", "-c", nfpm["run"]], env=env, capture_output=True, check=False)
+    result = _run_step(_with_fakes(bin_dir, nfpm["run"]), env=env, capture_output=True, check=False)
     assert result.returncode != 0
     assert not installed.exists()
 
@@ -850,8 +1242,11 @@ def test_docker_builds_arm64_natively_only_when_asked_and_pushes_only_when_asked
 
 # runs the report step's github-script body under Node with a stand-in for its core API
 _OSV_HARNESS = """
-const calls = { info: [], warning: [], error: [], setFailed: [] };
-const record = (kind) => (message) => calls[kind].push(message);
+const calls = { info: [], warning: [], error: [], setFailed: [], files: [] };
+const record = (kind) => (message, properties) => {
+  calls[kind].push(message);
+  if (properties?.file) calls.files.push(properties.file);
+};
 const core = {
   info: record('info'), warning: record('warning'), error: record('error'), setFailed: record('setFailed'),
   summary: { addHeading() { return this; }, addTable() { return this; }, async write() {} },
@@ -863,18 +1258,22 @@ new AsyncFunction('require', 'core', body)(require, core).then(() => console.log
 
 
 def _run_osv_report(
-    tmp_path: Path, status: int, results: list[YamlDoc] | None, *, enforce: bool
+    tmp_path: Path, outcome: str, results: list[YamlDoc] | None, *, enforce: bool, empty: bool = False
 ) -> dict[str, list[str]]:
-    report = _step("library.yml", "scan", "Report OSV findings")
+    """Runs the report step's script after a scan step that ended in `outcome` and wrote `results`, if any."""
+    report = _step("library.yml", "scan-osv", "Report OSV findings")
     script = tmp_path / "report.js"
     script.write_text(report["with"]["script"], encoding="utf-8")
-    osv_json = tmp_path / "osv.json"
-    if results is not None:
+    # where the scan step writes it: the workspace, which the report step resolves it against
+    osv_json = tmp_path / report["env"]["OSV_REPORT"]
+    if empty:
+        osv_json.write_text("", encoding="utf-8")
+    elif results is not None:
         osv_json.write_text(json.dumps({"results": results}), encoding="utf-8")
     env = {
         **os.environ,
-        "OSV_STATUS": str(status),
-        "OSV_REPORT": str(osv_json),
+        "OSV_OUTCOME": outcome,
+        "OSV_REPORT": report["env"]["OSV_REPORT"],
         "OSV_ENFORCE": "true" if enforce else "false",
         "GITHUB_WORKSPACE": str(tmp_path),
     }
@@ -893,16 +1292,75 @@ def _finding(advisory: str, max_severity: str, rating: str | None = None) -> Yam
     }
 
 
+# a public repository's pull requests only: a private one needs GitHub Code Security for it
 @pytest.mark.parametrize("name", CHECKS)
-def test_osv_scan_never_swallows_the_result_and_is_the_same_in_every_check_pipeline(name: str):
-    scan = _step(name, "scan", "Scan with OSV")
-    report = _step(name, "scan", "Report OSV findings")
-    assert "|| true" not in scan["run"]
-    assert report["env"]["OSV_ENFORCE"] == "${{ github.event_name == 'pull_request' }}"
-    assert report == _step("library.yml", "scan", "Report OSV findings")
+def test_scan_reviews_a_public_repositorys_pull_request_dependency_changes(name: str):
+    review = _step(name, "scan", "Review the dependency changes")
+    assert review["if"] == "github.event_name == 'pull_request' && github.event.repository.private == false"
+    assert re.match(r"actions/dependency-review-action@", review["uses"])
+    assert review["with"] == {"fail-on-severity": "high"}
+    assert review == _step("library.yml", "scan", "Review the dependency changes")
 
 
-needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the github-script body")
+_OSV_IMAGE = re.compile(r"^ghcr\.io/google/osv-scanner:v\d+\.\d+\.\d+$")
+_OSV_RUN = (
+    '/osv-scanner scan source --format=json --output-file="$GITHUB_WORKSPACE/osv-results.json"'
+    " --recursive --allow-no-lockfiles ."
+)
+
+
+# OSV-Scanner's own image as a job container, which a runner set with no Docker daemon runs as it runs any,
+# where it refuses the scanner's container action
+@pytest.mark.parametrize("name", CHECKS)
+def test_osv_scan_runs_in_osv_scanners_own_image_and_is_the_same_in_every_check_pipeline(name: str):
+    job = _jobs(name)["scan-osv"]
+    assert job["name"] == "scan (osv)"
+    assert job["runs-on"] == "${{ inputs.scan_runs_on || inputs.runs_on }}"
+    assert job["permissions"] == {"contents": "read"}
+    assert job["defaults"] == {"run": {"working-directory": "${{ inputs.working_directory }}"}}
+    assert set(job["container"]) == {"image"}
+    assert _OSV_IMAGE.match(job["container"]["image"])
+    # an `image:` key, which Dependabot's docker ecosystem updates
+    text = (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
+    assert f"      image: {job['container']['image']}\n" in text
+    assert "google/osv-scanner-action" not in text
+    assert [step["name"] for step in job["steps"]] == ["Check out", "Scan with OSV", "Report OSV findings"]
+    scan = _step(name, "scan-osv", "Scan with OSV")
+    # a finding fails the scanner as a failure does, so the report decides
+    assert scan["continue-on-error"] is True
+    assert scan["id"] == "osv"
+    assert scan["run"] == _OSV_RUN
+    assert "uses" not in scan
+    report = _step(name, "scan-osv", "Report OSV findings")
+    assert report["env"] == {
+        "OSV_OUTCOME": "${{ steps.osv.outcome }}",
+        "OSV_REPORT": "osv-results.json",
+        "OSV_ENFORCE": "${{ github.event_name == 'pull_request' }}",
+    }
+    assert "curl" not in text
+    assert job == _jobs("library.yml")["scan-osv"]
+
+
+@pytest.mark.parametrize("name", CHECKS)
+def test_scan_keeps_gitleaks_and_the_dependency_review_on_the_pipelines_runner(name: str):
+    inputs = _workflow_call(name)["inputs"]
+    assert inputs["scan_runs_on"]["type"] == "string"
+    assert inputs["scan_runs_on"]["default"] == ""
+    assert inputs["scan_runs_on"]["required"] is False
+    assert "scan_container" not in inputs
+    scan = _jobs(name)["scan"]
+    assert scan["runs-on"] == "${{ inputs.runs_on }}"
+    assert "container" not in scan
+    assert scan["permissions"] == {"contents": "read", "pull-requests": "write"}
+    names = [step.get("name") for step in scan["steps"]]
+    assert names == ["Check out", "Scan with Gitleaks", "Review the dependency changes"]
+
+
+def test_nothing_passes_scan_container_or_uses_osv_scanners_action():
+    for name in FILES:
+        text = (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
+        assert "scan_container" not in text, name
+        assert "google/osv-scanner-action" not in text, name
 
 
 @needs_node
@@ -911,7 +1369,7 @@ def test_osv_report_fails_only_a_pull_request_on_a_high_finding(tmp_path: Path, 
     lockfile = {"source": {"path": str(tmp_path / "uv.lock")}}
     calls = _run_osv_report(
         tmp_path,
-        1,
+        "failure",
         [{**lockfile, "packages": [_finding("GHSA-high", "9.8"), _finding("GHSA-low", "5.3")]}],
         enforce=enforce,
     )
@@ -920,20 +1378,41 @@ def test_osv_report_fails_only_a_pull_request_on_a_high_finding(tmp_path: Path, 
     assert any("GHSA-low" in message for message in calls["warning"])
 
 
+# the scanner reports absolute paths inside the workspace, and an annotation takes one relative to it
+@needs_node
+def test_osv_report_annotates_the_lockfile_relative_to_the_workspace(tmp_path: Path):
+    lockfile = {"source": {"path": str(tmp_path / "docs" / "uv.lock")}}
+    calls = _run_osv_report(tmp_path, "failure", [{**lockfile, "packages": [_finding("GHSA-a", "9.8")]}], enforce=True)
+    assert [Path(file).as_posix() for file in calls["files"]] == ["docs/uv.lock"]
+    assert not any(Path(file).is_absolute() for file in calls["files"])
+
+
 @needs_node
 def test_osv_report_uses_the_advisory_rating_without_a_score(tmp_path: Path):
     lockfile = {"source": {"path": str(tmp_path / "uv.lock")}}
-    calls = _run_osv_report(tmp_path, 1, [{**lockfile, "packages": [_finding("GHSA-c", "", "CRITICAL")]}], enforce=True)
+    calls = _run_osv_report(
+        tmp_path, "failure", [{**lockfile, "packages": [_finding("GHSA-c", "", "CRITICAL")]}], enforce=True
+    )
     assert len(calls["setFailed"]) == 1
 
 
 @needs_node
-@pytest.mark.parametrize(
-    ("status", "results", "warned"), [(0, [], False), (128, [], False), (127, [], True), (1, None, True)]
-)
+@pytest.mark.parametrize(("results", "empty"), [([], False), (None, False), (None, True)])
 def test_osv_report_passes_when_there_is_nothing_to_report(
-    tmp_path: Path, status: int, results: list[YamlDoc] | None, *, warned: bool
+    tmp_path: Path, results: list[YamlDoc] | None, *, empty: bool
 ):
-    calls = _run_osv_report(tmp_path, status, results, enforce=True)
+    calls = _run_osv_report(tmp_path, "success", results, enforce=True, empty=empty)
     assert calls["setFailed"] == []
-    assert bool(calls["warning"]) is warned
+    assert calls["warning"] == []
+    if results is None:
+        assert calls["info"] == ["No lockfiles to scan"]
+
+
+# a pull request mustn't pass with its dependencies unchecked; elsewhere OSV's API being down mustn't stop a release
+@needs_node
+@pytest.mark.parametrize("empty", [False, True])
+@pytest.mark.parametrize("enforce", [True, False])
+def test_osv_report_fails_only_a_pull_request_it_couldnt_scan(tmp_path: Path, *, enforce: bool, empty: bool):
+    calls = _run_osv_report(tmp_path, "failure", None, enforce=enforce, empty=empty)
+    assert len(calls["setFailed"]) == (1 if enforce else 0)
+    assert len(calls["warning"]) == (0 if enforce else 1)

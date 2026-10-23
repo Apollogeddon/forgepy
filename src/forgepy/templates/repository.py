@@ -22,6 +22,11 @@ junit-report.xml
 *.deb
 """
 
+# LF in the working tree on every platform, so a Windows checkout reads the same as Ruff and the tests expect
+GITATTRIBUTES = """\
+* text=auto eol=lf
+"""
+
 EDITORCONFIG = """\
 root = true
 

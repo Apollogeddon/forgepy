@@ -50,3 +50,13 @@ updates:
       - dependency-name: "apollogeddon/forgepy"
     cooldown:
       default-days: 3
+
+  # OSV-Scanner's image, which the scan (osv) stage runs in
+  - package-ecosystem: "docker"
+    directory: "/.github/workflows"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(ci)"
+    cooldown:
+      default-days: 3

@@ -38,7 +38,8 @@ class MemoryFileSystem:
     """In-memory filesystem for fast, deterministic feature/core tests."""
 
     def __init__(self, initial_files: dict[str, str] | None = None) -> None:
-        self._files: dict[str, str] = dict(initial_files or {})
+        # keyed like every later lookup, so a path seeded with Windows separators is found
+        self._files: dict[str, str] = {self._key(Path(key)): text for key, text in (initial_files or {}).items()}
         self._dirs: set[str] = set()
 
     @staticmethod

@@ -16,4 +16,7 @@ This repository uses:
 
 - **Gitleaks**, which scans each change for committed secrets.
 - **OSV-Scanner**, which scans the dependencies for known vulnerabilities on each change.
+- **Dependency review**, which fails a pull request whose dependency changes bring in a high or critical vulnerability.
+- **OpenSSF Scorecard**, which checks the repository's supply-chain practices on each push to `main` and weekly, and reports them as code scanning alerts.
+- **Dependabot security updates**, which propose an upgrade of each dependency with a known vulnerability as a pull request.
 - **Dependabot**, which proposes dependency and GitHub Actions updates. It waits three days after a version is published before proposing it, so a compromised release has time to be caught and yanked upstream.

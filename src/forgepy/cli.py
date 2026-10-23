@@ -61,6 +61,12 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--docker", action="store_true", help="Add a Dockerfile (not available for --library)")
     init_parser.add_argument("--debian", action="store_true", help="Add nfpm-based .deb packaging (--backend only)")
     init_parser.add_argument(
+        "--windows", action="store_true", help="Test and build on Windows too, in CI (not available for --website)"
+    )
+    init_parser.add_argument(
+        "--macos", action="store_true", help="Test and build on macOS too, in CI (not available for --website)"
+    )
+    init_parser.add_argument(
         "--jython",
         action="store_true",
         help="Scripts that run on Jython 2.7: no packaging, lint rules that keep Python 2 syntax, "
@@ -132,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
         versioning=_resolve(args.versioning, args.all),
         docker=args.docker,
         debian=args.debian,
+        windows=args.windows,
+        macos=args.macos,
         jython=args.jython,
         python_version=args.python_version,
         target=Path(args.path).resolve(),

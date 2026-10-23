@@ -155,7 +155,7 @@ jobs:
       pull-requests: write
 ```
 
-The same shape runs the checks on several interpreters, with `python_version: ${{ matrix.python }}` in place of `sync_args`. Security patches aren't a check: the `patch` job upgrades `uv.lock` once, on its own schedule.
+The same shape runs the checks on several interpreters, with `python_version: ${{ matrix.python }}` in place of `sync_args`. Security patches aren't a check: Dependabot security updates propose them as pull requests, once per lockfile rather than once per leg.
 
 ### Custom build steps
 
