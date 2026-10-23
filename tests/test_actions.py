@@ -1315,7 +1315,10 @@ _OSV_RUN = (
 def test_osv_scan_runs_in_osv_scanners_own_image_and_is_the_same_in_every_check_pipeline(name: str):
     job = _jobs(name)["scan-osv"]
     assert job["name"] == "scan (osv)"
-    assert job["runs-on"] == "${{ inputs.scan_runs_on || inputs.runs_on }}"
+    # a private repository's self-hosted runs_on often can't run a job container
+    assert job["runs-on"] == (
+        "${{ inputs.scan_runs_on || (github.event.repository.private && 'ubuntu-latest' || inputs.runs_on) }}"
+    )
     assert job["permissions"] == {"contents": "read"}
     assert job["defaults"] == {"run": {"working-directory": "${{ inputs.working_directory }}"}}
     assert set(job["container"]) == {"image"}

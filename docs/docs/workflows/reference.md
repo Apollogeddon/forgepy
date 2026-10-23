@@ -15,7 +15,7 @@ Every pipeline takes a `runs_on` input, default `ubuntu-latest`, for each of its
 
 ### The scan (osv) stage's runner
 
-The check pipelines' `scan (osv)` stage runs in OSV-Scanner's own image (`ghcr.io/google/osv-scanner`) as a job container, so it needs a Linux runner that can run job containers: GitHub's hosted runners, or a self-hosted Kubernetes-mode runner set, which runs the job container as a pod and needs no Docker daemon. A caller whose `runs_on` is a self-hosted runner without job container support must set `scan_runs_on` to one that has it. The `scan` stage, Gitleaks and the dependency review, stays on `runs_on`.
+The check pipelines' `scan (osv)` stage runs in OSV-Scanner's own image (`ghcr.io/google/osv-scanner`) as a job container, so it needs a Linux runner that can run job containers: GitHub's hosted runners, or a self-hosted Kubernetes-mode runner set, which runs the job container as a pod and needs no Docker daemon. In a private repository, whose `runs_on` is often a self-hosted runner that can't run one, it runs on GitHub's `ubuntu-latest`; in a public one it follows `runs_on`. To keep a private repository's scan on self-hosted runners, set `scan_runs_on` to a set that can. The `scan` stage, Gitleaks and the dependency review, stays on `runs_on`.
 
 ```yaml
     with:
@@ -51,7 +51,7 @@ The three share their first four stages, job for job:
 | Input | Default | Description |
 | :--- | :--- | :--- |
 | `runs_on` | `'ubuntu-latest'` | Runner label for every job |
-| `scan_runs_on` | `''` | Runner label for the scan (osv) stage, which runs in OSV-Scanner's image: a Linux runner that can run a job container, such as GitHub's hosted runners or a Kubernetes-mode runner set. Empty uses `runs_on`; see [The scan (osv) stage's runner](#the-scan-osv-stages-runner) |
+| `scan_runs_on` | `''` | Runner label for the scan (osv) stage, which runs in OSV-Scanner's image: a Linux runner that can run a job container, such as GitHub's hosted runners or a Kubernetes-mode runner set. Empty uses GitHub's `ubuntu-latest` in a private repository and `runs_on` in a public one; see [The scan (osv) stage's runner](#the-scan-osv-stages-runner) |
 | `working_directory` | `'.'` | Directory holding `pyproject.toml` |
 | `python_version` | `''` | Python version for every job. Empty reads the project's `.python-version`, and without one uses Forge.py's default; see [Python version](../configuration.md#python-version) |
 | `enable_secrets` | `true` | Run the Gitleaks secret scan |
