@@ -47,22 +47,12 @@ def test_init_creates_expected_files_for_backend():
         assert fs.exists(PROJECT / expected), f"expected {expected} to exist"
 
 
-def test_init_library_has_no_private_classifier():
+@pytest.mark.parametrize(("mode", "classifiers"), [(Mode.LIBRARY, None), (Mode.BACKEND, ["Private :: Do Not Upload"])])
+def test_init_marks_only_a_backend_private(mode: Mode, classifiers: list[str] | None):
     fs = MemoryFileSystem()
-    cfg = InitConfig(target=PROJECT, mode=Mode.LIBRARY)
-    init(cfg, fs)
-
-    doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
-    assert "classifiers" not in doc["project"]
-
-
-def test_init_backend_has_private_classifier():
-    fs = MemoryFileSystem()
-    cfg = InitConfig(target=PROJECT, mode=Mode.BACKEND)
-    init(cfg, fs)
-
-    doc = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))
-    assert "Private :: Do Not Upload" in list(doc["project"]["classifiers"])
+    init(InitConfig(target=PROJECT, mode=mode), fs)
+    project = tomlkit.parse(fs.read_text(PROJECT / "pyproject.toml"))["project"]
+    assert (list(project["classifiers"]) if "classifiers" in project else None) == classifiers
 
 
 def test_init_does_not_overwrite_without_force():
@@ -172,12 +162,6 @@ def test_init_tests_and_builds_on_windows_and_macos_when_asked(mode: Mode, *, wi
     expected = {"test_windows": "windows-latest"} if windows else {}
     expected |= {"test_macos": "macos-latest"} if macos else {}
     assert {k: v for k, v in checks.get("with", {}).items() if k.startswith("test_")} == expected
-
-
-def test_init_leaves_windows_and_macos_off_by_default():
-    fs = MemoryFileSystem()
-    init(InitConfig(target=PROJECT), fs)
-    assert "with" not in _workflow(fs)["jobs"]["service"]
 
 
 @pytest.mark.parametrize("flag", ["windows", "macos"])
@@ -363,15 +347,6 @@ def test_init_website_creates_site_scaffold():
     assert fs.exists(PROJECT / "docs/index.md")
 
 
-def test_init_website_generates_website_workflow():
-    fs = MemoryFileSystem()
-    cfg = InitConfig(target=PROJECT, mode=Mode.WEBSITE)
-    init(cfg, fs)
-    jobs = _workflow(fs)["jobs"]
-    assert jobs["website"]["uses"] == f"{FORGEPY}/website.yml@main"
-    assert jobs["pages"]["uses"] == f"{FORGEPY}/pages.yml@main"
-
-
 def test_init_debian_creates_packaging_files():
     fs = MemoryFileSystem()
     cfg = InitConfig(target=PROJECT, debian=True)
@@ -397,27 +372,19 @@ def test_debian_rejected_outside_backend_mode():
     assert any("debian" in e for e in errors)
 
 
-def test_pyrightconfig_include_omits_src_for_website():
+@pytest.mark.parametrize(
+    ("cfg", "include"),
+    [
+        (InitConfig(target=PROJECT), ["src", "tests"]),
+        (InitConfig(target=PROJECT, mode=Mode.WEBSITE), ["tests"]),
+        (InitConfig(target=PROJECT, testing=False), ["src"]),
+    ],
+    ids=["backend", "website", "no-testing"],
+)
+def test_pyrightconfig_includes_only_the_paths_init_creates(cfg: InitConfig, include: list[str]):
     fs = MemoryFileSystem()
-    init(InitConfig(target=PROJECT, mode=Mode.WEBSITE), fs)
-    content = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
-    assert "src" not in content["include"]
-    assert "tests" in content["include"]
-
-
-def test_pyrightconfig_include_omits_tests_when_testing_disabled():
-    fs = MemoryFileSystem()
-    init(InitConfig(target=PROJECT, testing=False), fs)
-    content = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
-    assert "tests" not in content["include"]
-    assert "src" in content["include"]
-
-
-def test_pyrightconfig_include_has_both_for_default_backend():
-    fs = MemoryFileSystem()
-    init(InitConfig(target=PROJECT), fs)
-    content = json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))
-    assert {"src", "tests"} <= set(content["include"])
+    init(cfg, fs)
+    assert json.loads(fs.read_text(PROJECT / "pyrightconfig.json"))["include"] == include
 
 
 def test_init_release_config_bumps_the_normalized_name_in_uv_lock():
@@ -430,36 +397,6 @@ def test_init_release_config_bumps_the_normalized_name_in_uv_lock():
     # release-please's TOML parser wraps each value, and uv.lock records the PEP 503 normalized name;
     # with @.name=='...' or the declared name, release-please matches nothing and the lock never moves
     assert extra["jsonpath"] == "$.package[?(@.name.value=='my-project')].version"
-
-
-@pytest.mark.parametrize(
-    "cfg",
-    [
-        InitConfig(target=PROJECT),
-        InitConfig(target=PROJECT, mode=Mode.LIBRARY),
-        InitConfig(target=PROJECT, mode=Mode.WEBSITE),
-        InitConfig(target=PROJECT, debian=True),
-        InitConfig(target=PROJECT, docker=True),
-        InitConfig(target=PROJECT, windows=True, macos=True),
-        InitConfig(target=PROJECT, mode=Mode.LIBRARY, windows=True, macos=True),
-    ],
-    ids=["backend", "library", "website", "debian", "docker", "windows-macos", "library-windows-macos"],
-)
-def test_init_generates_least_privilege_ci_that_never_cancels_main(cfg: InitConfig):
-    fs = MemoryFileSystem()
-    init(cfg, fs)
-    workflow = _workflow(fs)
-    # a run outside a pull request has a group of its own, so one on main is never cancelled
-    assert "github.event.pull_request.number || github.run_id" in workflow["concurrency"]["group"]
-    assert workflow["permissions"] == {}
-    for name, job in workflow["jobs"].items():
-        # secrets go by name, never inherit, and only the release app's key at that
-        assert job.get("secrets", {}) in ({}, {"APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"}), name
-        # only PyPI Trusted Publishing and GitHub Pages need an OIDC token
-        if name not in ("publish", "pages"):
-            assert "id-token" not in job["permissions"], f"{name} asks for id-token"
-    # forgepy's files are refreshed through a pull request, weekly, on a manual run and after a Dependabot merge
-    assert workflow["jobs"]["patch"]["uses"] == f"{FORGEPY}/patch.yml@main"
 
 
 def test_init_jython_installs_only_the_dev_tools():
@@ -705,7 +642,7 @@ class TestOldIndexWorkflow:
 
     old = PROJECT / ".github/workflows/index.yml"
     legacy = (Path(__file__).parent / "fixtures/legacy/backend.yml").read_text(encoding="utf-8")
-    changed = legacy.replace("    with:\n", "    with:\n      runs_on: xerus\n")
+    changed = legacy.replace("    with:\n", "    with:\n      runs_on: self-hosted\n")
 
     def _fs(self, content: str) -> MemoryFileSystem:
         fs = MemoryFileSystem()

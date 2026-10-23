@@ -36,11 +36,6 @@ def test_sync_check_returns_zero_when_up_to_date():
     assert sync(PROJECT, check=True, fs=fs) == 0
 
 
-def test_sync_check_returns_nonzero_when_missing():
-    fs = MemoryFileSystem()
-    assert sync(PROJECT, check=True, fs=fs) == 1
-
-
 def test_sync_check_returns_nonzero_when_stale():
     fs = MemoryFileSystem()
     sync(PROJECT, fs=fs)

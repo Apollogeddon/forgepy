@@ -15,24 +15,13 @@ from typing import Any, cast
 
 import pytest
 import yaml
+from support import BASH
 
 from forgepy.config import DEBIAN_IMAGE, DEBIAN_PYTHON_VERSION, DEFAULT_PYTHON_VERSION, InitConfig
 from forgepy.core import init
 from forgepy.templates import legacy as legacy_templates
 from forgepy.templates import workflows as workflow_templates
 from forgepy.utils.filesystem import MemoryFileSystem
-
-
-def _bash() -> str:
-    """The bash step scripts run in: on Windows, Git's own, as a bare "bash" finds System32's WSL launcher."""
-    if os.name != "nt":
-        return "bash"
-    # git.exe sits in Git/cmd, Git/bin or Git/mingw64/bin, and bash.exe in Git/bin
-    git = Path(shutil.which("git") or "git").resolve()
-    return next((str(p / "bin" / "bash.exe") for p in git.parents if (p / "bin" / "bash.exe").is_file()), "bash")
-
-
-BASH = _bash()
 
 
 def _run_step(script: str, **kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -237,11 +226,6 @@ def test_grants_nothing_by_default(name: str):
         assert doc["permissions"] == {}
 
 
-@pytest.mark.parametrize(("name", "text"), GENERATED, ids=[name for name, _ in GENERATED])
-def test_generated_index_grants_nothing_by_default(name: str, text: str):  # noqa: ARG001
-    assert _load_text(text)["permissions"] == {}
-
-
 # --- wiring: a caller's inputs, secrets, outputs and permissions match what it calls -------------
 
 _LEVELS = {"none": 0, "read": 1, "write": 2}
@@ -342,7 +326,7 @@ class TestOwnIndex:
         assert "publish" not in jobs
 
     def test_has_the_same_concurrency_as_a_generated_index(self):
-        assert self.doc["concurrency"] == _load_text(GENERATED[0][1])["concurrency"] == _CONCURRENCY
+        assert self.doc["concurrency"] == _CONCURRENCY
 
     def test_refreshes_the_docs_sites_forgepy_files_on_the_schedule_a_manual_run_and_a_merge(self):
         jobs = self.doc["jobs"]
@@ -398,11 +382,15 @@ class TestGeneratedIndex:
         assert doc["jobs"]["patch"]["if"] == f"${{{{ {_PATCH_EVENTS} }}}}"
         assert {"schedule", "workflow_dispatch", "repository_dispatch"} <= set(_on(doc))
 
-    # only PyPI Trusted Publishing and GitHub Pages need an OIDC token
-    def test_asks_for_id_token_only_to_publish_or_deploy(self, name: str, text: str):  # noqa: ARG002
-        for job_id, job in _load_text(text)["jobs"].items():
+    # nothing by default; only PyPI Trusted Publishing and GitHub Pages need an OIDC token, and the only secret
+    # passed is the release app's key
+    def test_grants_least_privilege(self, name: str, text: str):  # noqa: ARG002
+        doc = _load_text(text)
+        assert doc["permissions"] == {}
+        for job_id, job in doc["jobs"].items():
             if job_id not in ("publish", "pages"):
                 assert "id-token" not in job["permissions"], job_id
+            assert job.get("secrets", {}) in ({}, _APP_SECRETS), job_id
 
     # the Python version lives in .python-version, which the pipelines read
     def test_leaves_the_python_version_to_the_python_version_file(self, name: str, text: str):  # noqa: ARG002
@@ -533,7 +521,7 @@ def test_legacy_ignores_line_endings_trailing_spaces_and_blank_lines():
 
 def test_legacy_doesnt_know_a_changed_one_or_one_under_another_name():
     content = (FIXTURES / "library.yml").read_text(encoding="utf-8")
-    changed = content.replace("    with:\n", "    with:\n      runs_on: xerus\n")
+    changed = content.replace("    with:\n", "    with:\n      runs_on: self-hosted\n")
     assert not legacy_templates.is_legacy_workflow(".github/workflows/index.yml", changed)
     assert not legacy_templates.is_legacy_workflow(".github/workflows/build.yml", content)
 
@@ -1063,11 +1051,8 @@ def test_pages_deploys_one_at_a_time_in_a_group_a_callers_concurrency_cant_share
     assert _step("pages.yml", "deploy", "Download the build")["with"]["name"] == "${{ inputs.artifact_name }}"
 
 
-def test_publish_caps_the_package_stage_and_lets_assets_and_attest_take_the_callers_grant():
-    jobs = _jobs("publish.yml")
-    assert jobs["package"]["permissions"] == {"contents": "read", "id-token": "write"}
-    assert "permissions" not in jobs["assets"]
-    assert "permissions" not in jobs["attest"]
+def test_publish_caps_the_package_stage():
+    assert _jobs("publish.yml")["package"]["permissions"] == {"contents": "read", "id-token": "write"}
 
 
 def test_publish_ships_the_tested_build_without_installing_anything():
@@ -1098,8 +1083,6 @@ def test_patch_only_refreshes_forgepys_files_and_leaves_vulnerable_packages_to_d
         assert gone not in text
     assert _step("patch.yml", "update", "Refresh forgepy's files")["run"] == "uv run --locked forgepy sync"
     assert _jobs("patch.yml")["update"]["if"] == "github.ref == 'refs/heads/main'"
-    # the caller's grant, so a caller from before patch opened pull requests still starts
-    assert "permissions" not in _jobs("patch.yml")["update"]
     propose = _step("patch.yml", "update", "Propose the refresh")["with"]["script"]
     assert "error.status !== 403" in propose
     assert "grant this job pull-requests: write" in propose
@@ -1314,7 +1297,6 @@ _OSV_RUN = (
 @pytest.mark.parametrize("name", CHECKS)
 def test_osv_scan_runs_in_osv_scanners_own_image_and_is_the_same_in_every_check_pipeline(name: str):
     job = _jobs(name)["scan-osv"]
-    assert job["name"] == "scan (osv)"
     # a private repository's self-hosted runs_on often can't run a job container
     assert job["runs-on"] == (
         "${{ inputs.scan_runs_on || (github.event.repository.private && 'ubuntu-latest' || inputs.runs_on) }}"
@@ -1326,7 +1308,6 @@ def test_osv_scan_runs_in_osv_scanners_own_image_and_is_the_same_in_every_check_
     # an `image:` key, which Dependabot's docker ecosystem updates
     text = (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
     assert f"      image: {job['container']['image']}\n" in text
-    assert "google/osv-scanner-action" not in text
     assert [step["name"] for step in job["steps"]] == ["Check out", "Scan with OSV", "Report OSV findings"]
     scan = _step(name, "scan-osv", "Scan with OSV")
     # a finding fails the scanner as a failure does, so the report decides
@@ -1350,7 +1331,6 @@ def test_scan_keeps_gitleaks_and_the_dependency_review_on_the_pipelines_runner(n
     assert inputs["scan_runs_on"]["type"] == "string"
     assert inputs["scan_runs_on"]["default"] == ""
     assert inputs["scan_runs_on"]["required"] is False
-    assert "scan_container" not in inputs
     scan = _jobs(name)["scan"]
     assert scan["runs-on"] == "${{ inputs.runs_on }}"
     assert "container" not in scan

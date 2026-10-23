@@ -33,6 +33,12 @@ class Feature(ABC):
         return None
 
 
+def _write(ctx: FeatureContext, path: Path, content: str) -> None:
+    if not ctx.fs.exists(path.parent):
+        ctx.fs.mkdir(path.parent, parents=True)
+    ctx.fs.write_text(path, content)
+
+
 def create_file(ctx: FeatureContext, rel_path: str, content: str) -> bool:
     path = ctx.cwd / rel_path
     try:
@@ -46,10 +52,7 @@ def create_file(ctx: FeatureContext, rel_path: str, content: str) -> bool:
             console.dry(f"Would {verb} {rel_path}")
             return True
 
-        parent = path.parent
-        if not ctx.fs.exists(parent):
-            ctx.fs.mkdir(parent, parents=True)
-        ctx.fs.write_text(path, content)
+        _write(ctx, path, content)
         console.ok(f"{'Overwrote' if exists else 'Created'} {rel_path}")
         return True
     except OSError as exc:
@@ -68,10 +71,7 @@ def write_managed(ctx: FeatureContext, rel_path: str, content: str) -> bool:
             console.dry(f"Would refresh managed file {rel_path}")
             return True
 
-        parent = path.parent
-        if not ctx.fs.exists(parent):
-            ctx.fs.mkdir(parent, parents=True)
-        ctx.fs.write_text(path, content)
+        _write(ctx, path, content)
         console.ok(f"Refreshed {rel_path}")
         return True
     except OSError as exc:
@@ -91,10 +91,7 @@ def create_if_missing(ctx: FeatureContext, rel_path: str, content: str) -> bool:
         return True
 
     try:
-        parent = path.parent
-        if not ctx.fs.exists(parent):
-            ctx.fs.mkdir(parent, parents=True)
-        ctx.fs.write_text(path, content)
+        _write(ctx, path, content)
         console.ok(f"Created {rel_path}")
         return True
     except OSError as exc:

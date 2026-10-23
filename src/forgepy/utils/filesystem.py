@@ -6,7 +6,6 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class FileSystem(Protocol):
-    def cwd(self) -> Path: ...
     def exists(self, path: Path) -> bool: ...
     def mkdir(self, path: Path, *, parents: bool = True) -> None: ...
     def read_text(self, path: Path) -> str: ...
@@ -15,9 +14,6 @@ class FileSystem(Protocol):
 
 
 class LocalFileSystem:
-    def cwd(self) -> Path:
-        return Path.cwd()
-
     def exists(self, path: Path) -> bool:
         return path.exists()
 
@@ -46,9 +42,6 @@ class MemoryFileSystem:
     def _key(path: Path) -> str:
         return path.as_posix()
 
-    def cwd(self) -> Path:
-        return Path()
-
     def exists(self, path: Path) -> bool:
         key = self._key(path)
         return key in self._files or key in self._dirs
@@ -70,6 +63,3 @@ class MemoryFileSystem:
         if key not in self._files:
             raise FileNotFoundError(path)
         del self._files[key]
-
-    def read(self, rel_path: str) -> str | None:
-        return self._files.get(rel_path)

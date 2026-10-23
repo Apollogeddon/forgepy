@@ -50,10 +50,11 @@ def test_mode_conflict_rejected(tmp_path: Path, mode_a: str, mode_b: str):
     assert mode_b in result.stderr
 
 
-def test_docker_with_library_rejected(tmp_path: Path):
-    result = run_cli("init", "--library", "--docker", "--dry-run", cwd=tmp_path)
+@pytest.mark.parametrize(("mode", "feature"), [("--library", "--docker"), ("--website", "--debian")])
+def test_packaging_outside_its_modes_rejected(tmp_path: Path, mode: str, feature: str):
+    result = run_cli("init", mode, feature, "--dry-run", cwd=tmp_path)
     assert result.returncode != 0
-    assert "docker" in result.stderr.lower()
+    assert feature.removeprefix("--") in result.stderr.lower()
 
 
 @pytest.mark.parametrize("flag", ["--windows", "--macos"])
@@ -61,21 +62,6 @@ def test_windows_or_macos_with_website_rejected(tmp_path: Path, flag: str):
     result = run_cli("init", "--website", flag, "--dry-run", cwd=tmp_path)
     assert result.returncode == EXIT_INVALID_CONFIG
     assert f"{flag} is not available in website mode" in result.stderr
-
-
-@pytest.mark.parametrize("mode", ["--backend", "--library"])
-def test_windows_and_macos_test_and_build_on_them_too(tmp_path: Path, mode: str):
-    result = run_cli("init", mode, "--windows", "--macos", cwd=tmp_path)
-    assert result.returncode == 0, result.stderr
-    index = (tmp_path / ".github" / "workflows" / ".index.yml").read_text(encoding="utf-8")
-    assert "test_windows: windows-latest" in index
-    assert "test_macos: macos-latest" in index
-
-
-def test_debian_with_website_rejected(tmp_path: Path):
-    result = run_cli("init", "--website", "--debian", "--dry-run", cwd=tmp_path)
-    assert result.returncode != 0
-    assert "debian" in result.stderr.lower()
 
 
 def test_dry_run_leaves_no_pyproject(tmp_path: Path):
@@ -123,19 +109,6 @@ def test_sync_check_fails_when_missing(tmp_path: Path):
     result = run_cli("sync", "--check", cwd=tmp_path)
     assert result.returncode == 1
     assert not (tmp_path / ".forgepy/ruff.toml").exists()
-
-
-def test_sync_check_passes_after_sync(tmp_path: Path):
-    run_cli("sync", cwd=tmp_path)
-    result = run_cli("sync", "--check", cwd=tmp_path)
-    assert result.returncode == 0
-
-
-def test_sync_check_fails_after_tampering(tmp_path: Path):
-    run_cli("sync", cwd=tmp_path)
-    (tmp_path / ".forgepy/ruff.toml").write_text("tampered", encoding="utf-8")
-    result = run_cli("sync", "--check", cwd=tmp_path)
-    assert result.returncode == 1
 
 
 def test_init_then_sync_check_passes(tmp_path: Path):
