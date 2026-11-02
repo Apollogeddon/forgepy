@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.1](https://github.com/Apollogeddon/forgepy/compare/v1.1.0...v1.1.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **deps:** bump filelock from 4.0.3 to 4.2.6, past GHSA-v4x8-3wr5-3wq8 ([c7ea1aa](https://github.com/Apollogeddon/forgepy/commit/c7ea1aa00d3de19c95e3abd988fd8adb2a333d20))
+* **deps:** bump filelock from 4.0.3 to 4.2.6, past GHSA-v4x8-3wr5-3wq8 ([dcbf21e](https://github.com/Apollogeddon/forgepy/commit/dcbf21eb1327ac93ef144f5e75c665f0f5193234))
+* **deps:** bump the dependencies group across 1 directory with 4 updates ([#83](https://github.com/Apollogeddon/forgepy/issues/83)) ([93daef1](https://github.com/Apollogeddon/forgepy/commit/93daef11bd2f97c973f5058cb6b8153e8e1ff276))
+
 ## [1.1.0](https://github.com/Apollogeddon/forgepy/compare/v1.0.1...v1.1.0) (2026-10-23)
 
 
