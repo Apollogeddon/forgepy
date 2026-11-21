@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.2](https://github.com/Apollogeddon/forgepy/compare/v1.1.1...v1.1.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **deps:** bump ruff from 0.17.4 to 0.17.5 in the dependencies group ([#95](https://github.com/Apollogeddon/forgepy/issues/95)) ([99c513d](https://github.com/Apollogeddon/forgepy/commit/99c513dabf1395cdde90e56a2a8f37e62ca3a426))
+* **deps:** bump the dependencies group with 2 updates ([#92](https://github.com/Apollogeddon/forgepy/issues/92)) ([40ed3bd](https://github.com/Apollogeddon/forgepy/commit/40ed3bdfcccfbecb5c5290b5ea132c42cd251bbf))
+* **deps:** bump watchdog from 6.0.0 to 7.0.0 ([#88](https://github.com/Apollogeddon/forgepy/issues/88)) ([f13bcf4](https://github.com/Apollogeddon/forgepy/commit/f13bcf45502b7c230de1f41d1ca4dd5462f05a8d))
+
 ## [1.1.1](https://github.com/Apollogeddon/forgepy/compare/v1.1.0...v1.1.1) (2026-11-02)
 
 
