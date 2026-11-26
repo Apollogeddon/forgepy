@@ -31,7 +31,7 @@ The three share their first four stages, job for job:
 
 1. **`lint`**: `uv sync --locked` (plus `sync_args`), then `ruff check`, `ruff format --check`, `basedpyright`, and `forgepy sync --check` when the project has a `.forgepy/` directory. In a `--jython` project (one with `.forgepy/ruff-jython.toml`) it also runs `poe compat`, the vermin Jython 2.7 check.
 2. **`scan`**: Gitleaks secret scan (skip with `enable_secrets: false`) and, on a public repository's pull requests, GitHub's [dependency review](https://github.com/actions/dependency-review-action), which fails on a dependency change that brings in a high or critical vulnerability (a private repository needs GitHub Code Security for it, so it's skipped there).
-   **`scan (osv)`**, beside it: an OSV-Scanner dependency scan. On a pull request, a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) fails the stage, so a change can't add one. Elsewhere, such as on a release, it's an error annotation that doesn't fail it: an advisory published against a dependency you already have shouldn't stop releases, and a Dependabot security update proposes the upgrade. Lower findings are warning annotations, and every finding is listed in the job summary. The stage runs in OSV-Scanner's own [image](https://github.com/google/osv-scanner/pkgs/container/osv-scanner), pinned to a version that Dependabot's Docker updates keep current. If the scanner can't finish, for example because OSV's API is unreachable, a pull request fails, as its dependencies weren't checked; elsewhere the stage warns and passes. The image is the job's container, so the stage needs a Linux runner that can run one: see [The scan (osv) stage's runner](#the-scan-osv-stages-runner). To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside the lockfile:
+   **`scan (osv)`**, beside it: an OSV-Scanner dependency scan. On a pull request, the stage scans the base branch too, and a high or critical finding (a CVSS score of 7 or more, or GitHub's rating when an advisory has no score) that the pull request adds fails it, so a change can't add one. One the base branch already has is a warning annotation instead: an advisory published against a dependency you already have, with no fixed version yet, would otherwise fail every pull request, Dependabot's included, and two security updates, each leaving the other's advisory, could never merge. If the base branch couldn't be scanned, every high or critical finding fails the pull request. Elsewhere, such as on a release, a high or critical finding is an error annotation that doesn't fail the stage, so releases still run while a Dependabot security update proposes the upgrade. Lower findings are warning annotations, and every finding is listed in the job summary. The stage runs in OSV-Scanner's own [image](https://github.com/google/osv-scanner/pkgs/container/osv-scanner), pinned to a version that Dependabot's Docker updates keep current. If the scanner can't finish, for example because OSV's API is unreachable, a pull request fails, as its dependencies weren't checked; elsewhere the stage warns and passes. The image is the job's container, so the stage needs a Linux runner that can run one: see [The scan (osv) stage's runner](#the-scan-osv-stages-runner). To accept a finding you can't fix yet, list it in an [`osv-scanner.toml`](https://google.github.io/osv-scanner/configuration/) beside the lockfile:
 
     ```toml
     [[IgnoredVulns]]
@@ -190,13 +190,13 @@ release-please tags the release before those checks run. If they fail, the tag a
 
 ### Release pull requests that run the checks
 
-A pull request opened with `GITHUB_TOKEN` starts no workflows, so a release pull request's checks never run on their own. One opened with a GitHub App's token runs them. The generated `version` job passes the app as `app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}` and the secret `APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}`, both empty until you set them, so release-please uses `GITHUB_TOKEN` by default. To use an app:
+A pull request opened with `GITHUB_TOKEN` starts no workflows, so a release pull request's checks never run on their own, nor do those of the pull request [`patch`](#patchyml) opens. One opened with a GitHub App's token runs them. The generated `version` and `patch` jobs pass the app as `app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}` and the secret `APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}`, both empty until you set them, so release-please uses `GITHUB_TOKEN` by default. To use an app:
 
 1. [Create a GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app) under your account or organisation, with no webhook and the repository permissions **Contents: Read and write** and **Pull requests: Read and write**. Note its client ID, and generate a private key.
 2. Install the app on the repository.
 3. In the repository's **Settings → Secrets and variables → Actions**, add the variable `RELEASE_APP_CLIENT_ID` with the client ID, and the secret `RELEASE_APP_PRIVATE_KEY` with the private key's contents.
 
-The `release` stage then creates a short-lived token for the app with [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token), and release-please opens, updates and tags as the app.
+The `release` stage then creates a short-lived token for the app with [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token), and release-please opens, updates and tags as the app. `patch`'s `update` stage does the same for its push and pull request.
 
 With **Require branches to be up to date before merging** turned on, every pull request is checked again before it merges; skipped jobs count as passed for required status checks.
 
@@ -290,7 +290,14 @@ After a Dependabot merge, the `auto-merged` dispatch runs it straight away on th
 
 1. **`update`**: On `main`, when `working_directory` has a `.forgepy/` directory, runs `forgepy sync`, so a project moved to a new tag without `forgepy sync`, or with `.forgepy/` edited by hand, doesn't leave `lint`'s `forgepy sync --check` failing. It never moves the tag. When anything changed, it commits it as `chore(deps): refresh the files forgepy manages`, force-pushes the commit to the `forgepy/sync` branch (`forgepy/sync-<working_directory>` for a project in a subdirectory), and opens a pull request for it unless one is open already. It never pushes to `main`, and the checkout keeps no credentials: only the push gets the token.
 
-The pull request is opened with `GITHUB_TOKEN`, so its checks don't start on their own: close and reopen it, or push to its branch, to run them.
+With a GitHub App, it pushes the refresh and opens the pull request with the app's token, so the checks run. Without one it uses `GITHUB_TOKEN`, and the pull request's checks don't start on their own: close and reopen it, or push to its branch, to run them. The generated `patch` job passes the same app as `version`, from the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret (see [Release pull requests that run the checks](#release-pull-requests-that-run-the-checks)).
+
+| Input | Default | Description |
+| :--- | :--- | :--- |
+| `working_directory` | `'.'` | Directory holding `pyproject.toml` and `uv.lock` |
+| `app_client_id` | `''` | A GitHub App's client ID. With the `APP_PRIVATE_KEY` secret, the refresh is pushed and its pull request opened with the app's token, so the pull request runs the checks; empty uses `GITHUB_TOKEN` |
+
+It takes one optional secret, `APP_PRIVATE_KEY`, the private key of the app `app_client_id` names.
 
 Vulnerable dependencies are left to [Dependabot security updates](https://docs.github.com/en/code-security/dependabot/dependabot-security-updates/about-dependabot-security-updates), which propose each upgrade as a pull request, on private repositories too, at no cost. They're a repository setting: turn them on in **Settings → Code security → Dependabot security updates**.
 

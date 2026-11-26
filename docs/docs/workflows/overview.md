@@ -106,6 +106,10 @@ jobs:
   patch:
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}
     uses: apollogeddon/forgepy/.github/workflows/patch.yml@main
+    with:
+      app_client_id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    secrets:
+      APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
     permissions:
       contents: write
       pull-requests: write
@@ -155,9 +159,9 @@ A library's PyPI trusted publisher names the workflow file that publishes, so it
 
 ## Secrets
 
-None are required. The pipelines use the run's `GITHUB_TOKEN`, which a called workflow gets without `secrets: inherit`. It drives release-please and the Dependabot merge, and pushes Docker images. The `version` job also passes an optional GitHub App, the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret, so release pull requests run the checks; both are empty until you set them, and nothing changes. See [Release pull requests that run the checks](reference.md#release-pull-requests-that-run-the-checks). PyPI publishing uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) through OIDC, which is why the `publish` job asks for `id-token: write`. Don't add `secrets: inherit`: it hands every repository secret to a workflow that lives in another repository. The check pipelines take one optional secret, `GH_TOKEN`, for a [pre-build command](reference.md#generating-content-before-the-build); pass it by name if you need it.
+None are required. The pipelines use the run's `GITHUB_TOKEN`, which a called workflow gets without `secrets: inherit`. It drives release-please and the Dependabot merge, and pushes Docker images. The `version` and `patch` jobs also pass an optional GitHub App, the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret, so release pull requests and `patch`'s refreshes run the checks; both are empty until you set them, and nothing changes. See [Release pull requests that run the checks](reference.md#release-pull-requests-that-run-the-checks). PyPI publishing uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) through OIDC, which is why the `publish` job asks for `id-token: write`. Don't add `secrets: inherit`: it hands every repository secret to a workflow that lives in another repository. The check pipelines take one optional secret, `GH_TOKEN`, for a [pre-build command](reference.md#generating-content-before-the-build); pass it by name if you need it.
 
-GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch) unless a GitHub App opens them, and the push a Dependabot merge makes to `main` doesn't run the pipeline either. The `merge` pipeline therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. `.index.yml` listens for it, so `main` runs `version` and release-please opens or updates its release pull request. The event runs on the default branch.
+GitHub doesn't start workflow runs for events made with `GITHUB_TOKEN`. So release-please's release pull requests don't run your checks on their own (they wait for approval, or a push to the branch) unless a GitHub App opens them, and the push a Dependabot merge makes to `main` doesn't run the pipeline either. The `merge` pipeline therefore sends a `repository_dispatch` event, `auto-merged`, once the pull request has merged: one of the two events `GITHUB_TOKEN` may start a run with. `.index.yml` listens for it, so `main` runs `version` and release-please opens or updates its release pull request, and `patch` proposes the files a Forge.py update refreshes. The event runs on the default branch. The pull request `patch` opens is made with `GITHUB_TOKEN` too unless the GitHub App is set, so without one, close and reopen it to run its checks.
 
 ## Required permissions
 
