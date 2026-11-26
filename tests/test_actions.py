@@ -1241,22 +1241,34 @@ new AsyncFunction('require', 'core', body)(require, core).then(() => console.log
 
 
 def _run_osv_report(
-    tmp_path: Path, outcome: str, results: list[YamlDoc] | None, *, enforce: bool, empty: bool = False
+    tmp_path: Path,
+    outcome: str,
+    results: list[YamlDoc] | str | None,
+    *,
+    enforce: bool,
+    base: tuple[str, list[YamlDoc] | None] = ("success", None),
 ) -> dict[str, list[str]]:
-    """Runs the report step's script after a scan step that ended in `outcome` and wrote `results`, if any."""
+    """Runs the report step's script after a scan step that ended in `outcome` and wrote `results` (a string
+    as it is), if any, and a base-branch scan that ended in `base[0]` and wrote `base[1]`, if any."""
     report = _step("library.yml", "scan-osv", "Report OSV findings")
     script = tmp_path / "report.js"
     script.write_text(report["with"]["script"], encoding="utf-8")
     # where the scan step writes it: the workspace, which the report step resolves it against
     osv_json = tmp_path / report["env"]["OSV_REPORT"]
-    if empty:
-        osv_json.write_text("", encoding="utf-8")
+    if isinstance(results, str):
+        osv_json.write_text(results, encoding="utf-8")
     elif results is not None:
         osv_json.write_text(json.dumps({"results": results}), encoding="utf-8")
+    base_outcome, base_results = base
+    if base_results is not None:
+        base_json = tmp_path / report["env"]["OSV_BASE_REPORT"]
+        base_json.write_text(json.dumps({"results": base_results}), encoding="utf-8")
     env = {
         **os.environ,
         "OSV_OUTCOME": outcome,
         "OSV_REPORT": report["env"]["OSV_REPORT"],
+        "OSV_BASE_OUTCOME": base_outcome,
+        "OSV_BASE_REPORT": report["env"]["OSV_BASE_REPORT"],
         "OSV_ENFORCE": "true" if enforce else "false",
         "GITHUB_WORKSPACE": str(tmp_path),
     }
@@ -1308,7 +1320,13 @@ def test_osv_scan_runs_in_osv_scanners_own_image_and_is_the_same_in_every_check_
     # an `image:` key, which Dependabot's docker ecosystem updates
     text = (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
     assert f"      image: {job['container']['image']}\n" in text
-    assert [step["name"] for step in job["steps"]] == ["Check out", "Scan with OSV", "Report OSV findings"]
+    assert [step["name"] for step in job["steps"]] == [
+        "Check out",
+        "Scan with OSV",
+        "Check out the base branch",
+        "Scan the base branch with OSV",
+        "Report OSV findings",
+    ]
     scan = _step(name, "scan-osv", "Scan with OSV")
     # a finding fails the scanner as a failure does, so the report decides
     assert scan["continue-on-error"] is True
@@ -1319,8 +1337,24 @@ def test_osv_scan_runs_in_osv_scanners_own_image_and_is_the_same_in_every_check_
     assert report["env"] == {
         "OSV_OUTCOME": "${{ steps.osv.outcome }}",
         "OSV_REPORT": "osv-results.json",
+        "OSV_BASE_OUTCOME": "${{ steps.osv-base.outcome }}",
+        "OSV_BASE_REPORT": "osv-base.json",
         "OSV_ENFORCE": "${{ github.event_name == 'pull_request' }}",
     }
+    # the pull request's base branch, beside its own checkout and after its own scan, which is recursive
+    checkout = _step(name, "scan-osv", "Check out the base branch")
+    assert checkout["if"] == "github.event_name == 'pull_request'"
+    assert checkout["with"] == {
+        "ref": "${{ github.event.pull_request.base.sha }}",
+        "path": ".osv-base",
+        "persist-credentials": False,
+    }
+    base = _step(name, "scan-osv", "Scan the base branch with OSV")
+    assert base["id"] == "osv-base"
+    assert base["if"] == "github.event_name == 'pull_request'"
+    assert base["continue-on-error"] is True
+    assert base["working-directory"] == ".osv-base/${{ inputs.working_directory }}"
+    assert base["run"] == _OSV_RUN.replace("osv-results.json", "osv-base.json")
     assert "curl" not in text
     assert job == _jobs("library.yml")["scan-osv"]
 
@@ -1361,6 +1395,64 @@ def test_osv_report_fails_only_a_pull_request_on_a_high_finding(tmp_path: Path, 
     assert any("GHSA-low" in message for message in calls["warning"])
 
 
+# an advisory no update fixes yet would otherwise fail every pull request, so nothing auto-merges, and two
+# security updates, each leaving the other's advisory, would never merge
+@needs_node
+def test_osv_report_annotates_a_high_finding_already_on_the_base_branch(tmp_path: Path):
+    high = {"source": {"path": str(tmp_path / "uv.lock")}, "packages": [_finding("GHSA-high", "9.8")]}
+    calls = _run_osv_report(tmp_path, "failure", [high], enforce=True, base=("failure", [high]))
+    assert calls["setFailed"] == []
+    assert calls["error"] == []
+    assert any("already on the base branch" in message and "GHSA-high" in message for message in calls["warning"])
+
+
+@needs_node
+def test_osv_report_fails_on_a_high_finding_the_pull_request_adds(tmp_path: Path):
+    lockfile = {"source": {"path": str(tmp_path / "uv.lock")}}
+    old = _finding("GHSA-old", "9.8")
+    calls = _run_osv_report(
+        tmp_path,
+        "failure",
+        [{**lockfile, "packages": [old, _finding("GHSA-new", "8.1")]}],
+        enforce=True,
+        base=("failure", [{**lockfile, "packages": [old]}]),
+    )
+    assert any("GHSA-new" in message for message in calls["error"])
+    assert not any("GHSA-old" in message for message in calls["error"])
+    assert len(calls["setFailed"]) == 1
+    assert "1 high or critical vulnerability this pull request adds" in calls["setFailed"][0]
+
+
+# the same advisory in another package is a new finding
+@needs_node
+def test_osv_report_matches_a_base_finding_by_package_as_well_as_advisory(tmp_path: Path):
+    lockfile = {"source": {"path": str(tmp_path / "uv.lock")}}
+    theirs = {**_finding("GHSA-x", "9.8"), "package": {"name": "other", "version": "1.0.0"}}
+    calls = _run_osv_report(
+        tmp_path,
+        "failure",
+        [{**lockfile, "packages": [_finding("GHSA-x", "9.8")]}],
+        enforce=True,
+        base=("failure", [{**lockfile, "packages": [theirs]}]),
+    )
+    assert len(calls["setFailed"]) == 1
+
+
+# a pull request still can't merge unchecked when the comparison is missing
+@needs_node
+def test_osv_report_treats_every_high_finding_as_new_when_the_base_couldnt_be_scanned(tmp_path: Path):
+    lockfile = {"source": {"path": str(tmp_path / "uv.lock")}}
+    calls = _run_osv_report(
+        tmp_path,
+        "failure",
+        [{**lockfile, "packages": [_finding("GHSA-a", "9.8")]}],
+        enforce=True,
+        base=("failure", None),
+    )
+    assert any("base branch couldn't be scanned" in message for message in calls["warning"])
+    assert len(calls["setFailed"]) == 1
+
+
 # the scanner reports absolute paths inside the workspace, and an annotation takes one relative to it
 @needs_node
 def test_osv_report_annotates_the_lockfile_relative_to_the_workspace(tmp_path: Path):
@@ -1379,23 +1471,22 @@ def test_osv_report_uses_the_advisory_rating_without_a_score(tmp_path: Path):
     assert len(calls["setFailed"]) == 1
 
 
+# a clean report, no report, and an empty one, as when nothing was scanned
 @needs_node
-@pytest.mark.parametrize(("results", "empty"), [([], False), (None, False), (None, True)])
-def test_osv_report_passes_when_there_is_nothing_to_report(
-    tmp_path: Path, results: list[YamlDoc] | None, *, empty: bool
-):
-    calls = _run_osv_report(tmp_path, "success", results, enforce=True, empty=empty)
+@pytest.mark.parametrize("results", [[], None, ""])
+def test_osv_report_passes_when_there_is_nothing_to_report(tmp_path: Path, results: list[YamlDoc] | str | None):
+    calls = _run_osv_report(tmp_path, "success", results, enforce=True)
     assert calls["setFailed"] == []
     assert calls["warning"] == []
-    if results is None:
+    if results is None or results == "":
         assert calls["info"] == ["No lockfiles to scan"]
 
 
 # a pull request mustn't pass with its dependencies unchecked; elsewhere OSV's API being down mustn't stop a release
 @needs_node
-@pytest.mark.parametrize("empty", [False, True])
+@pytest.mark.parametrize("results", [None, ""])
 @pytest.mark.parametrize("enforce", [True, False])
-def test_osv_report_fails_only_a_pull_request_it_couldnt_scan(tmp_path: Path, *, enforce: bool, empty: bool):
-    calls = _run_osv_report(tmp_path, "failure", None, enforce=enforce, empty=empty)
+def test_osv_report_fails_only_a_pull_request_it_couldnt_scan(tmp_path: Path, results: str | None, *, enforce: bool):
+    calls = _run_osv_report(tmp_path, "failure", results, enforce=enforce)
     assert len(calls["setFailed"]) == (1 if enforce else 0)
     assert len(calls["warning"]) == (0 if enforce else 1)
