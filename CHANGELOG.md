@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.2](https://github.com/Apollogeddon/forgepy/compare/v1.1.1...v1.1.2) (2026-11-26)
+
+
+### Bug Fixes
+
+* **ci:** fail a pull request only on the high osv findings it adds, not those already on main ([dc757cb](https://github.com/Apollogeddon/forgepy/commit/dc757cbeb14abe89efc2b44fc776d07c074f8dc6))
+* **ci:** open patch's pull request with the release app's token when one is set, so its checks run ([47a4d7f](https://github.com/Apollogeddon/forgepy/commit/47a4d7f5ae4f114941928115978551c4a30a26c8))
+* **ci:** unblock auto-patching: base-aware OSV gate, and patch PRs that run their checks ([723ce8b](https://github.com/Apollogeddon/forgepy/commit/723ce8b99748679582ce0c9ed38a68d91051f9c5))
+* **deps:** bump ruff from 0.17.4 to 0.17.5 in the dependencies group ([#95](https://github.com/Apollogeddon/forgepy/issues/95)) ([99c513d](https://github.com/Apollogeddon/forgepy/commit/99c513dabf1395cdde90e56a2a8f37e62ca3a426))
+* **deps:** bump the dependencies group with 2 updates ([#92](https://github.com/Apollogeddon/forgepy/issues/92)) ([40ed3bd](https://github.com/Apollogeddon/forgepy/commit/40ed3bdfcccfbecb5c5290b5ea132c42cd251bbf))
+* **deps:** bump watchdog from 6.0.0 to 7.0.0 ([#88](https://github.com/Apollogeddon/forgepy/issues/88)) ([f13bcf4](https://github.com/Apollogeddon/forgepy/commit/f13bcf45502b7c230de1f41d1ca4dd5462f05a8d))
+
 ## [1.1.1](https://github.com/Apollogeddon/forgepy/compare/v1.1.0...v1.1.1) (2026-11-02)
 
 
