@@ -242,14 +242,16 @@ def index_workflow(cfg: IndexWorkflowOptions) -> str:
         PipelineJob(
             id="patch",
             comment=(
-                "weekly, on a manual run and after a Dependabot merge: "
-                "a pull request refreshing the files forgepy manages"
+                "weekly, on a manual run and after a Dependabot merge: a pull request refreshing the files forgepy\n"
+                "manages; with the release GitHub App set, as for version, the pull request runs the checks"
             ),
             condition=(
                 "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
                 " || github.event_name == 'repository_dispatch'"
             ),
             pipeline="patch",
+            inputs={"app_client_id": _expr("vars.RELEASE_APP_CLIENT_ID")},
+            secrets={"APP_PRIVATE_KEY": _expr("secrets.RELEASE_APP_PRIVATE_KEY")},
             permissions={"contents": "write", "pull-requests": "write"},
         )
     )

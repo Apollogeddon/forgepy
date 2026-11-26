@@ -16,6 +16,15 @@ on:
         required: false
         type: string
         default: '.'
+      app_client_id:
+        description: "A GitHub App's client ID; with the APP_PRIVATE_KEY secret, the refresh is pushed and proposed with the app's token, so the pull request's checks run. Empty uses GITHUB_TOKEN"
+        required: false
+        type: string
+        default: ''
+    secrets:
+      APP_PRIVATE_KEY:
+        description: "The private key of the GitHub App app_client_id names"
+        required: false
 
 # No permissions of its own: the job takes its caller's grant, so a caller that grants contents: write but not
 # pull-requests: write still starts (GitHub refuses a whole run whose called job asks for more), and only the
@@ -45,12 +54,24 @@ jobs:
       - name: Refresh forgepy's files
         if: hashFiles(format('{0}/.forgepy/**', inputs.working_directory)) != ''
         run: uv run --locked forgepy sync
+      # a push or pull request made with GITHUB_TOKEN starts no workflow run, so the refresh's checks would never
+      # run; one made with an app's token runs them
+      - name: Create the app's token
+        id: app
+        if: inputs.app_client_id != '' && hashFiles(format('{0}/.forgepy/**', inputs.working_directory)) != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ inputs.app_client_id }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # only what the push and the pull request need, whatever else the app's installation was granted
+          permission-contents: write
+          permission-pull-requests: write
       # one branch per directory, replaced by each refresh, so there's never more than one pull request for it
       - name: Push the refresh
         id: push
         if: hashFiles(format('{0}/.forgepy/**', inputs.working_directory)) != ''
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           BRANCH: ${{ inputs.working_directory == '.' && 'forgepy/sync' || format('forgepy/sync-{0}', inputs.working_directory) }}
         run: |
           if [ -z "$(git status --porcelain -- .forgepy)" ]; then
@@ -71,7 +92,9 @@ jobs:
           BRANCH: ${{ steps.push.outputs.branch }}
           BASE: ${{ github.ref_name }}
           DIRECTORY: ${{ inputs.working_directory }}
+          APP: ${{ steps.app.outputs.token != '' }}
         with:
+          github-token: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           script: |
             const head = process.env.BRANCH;
             const { data: open } = await github.rest.pulls.list({
@@ -89,9 +112,12 @@ jobs:
                 title: `chore(deps): refresh the files forgepy manages${where}`,
                 body: [
                   `\`forgepy sync\` refreshed \`.forgepy/\`${where} to match the forgepy release the project uses.`,
-                  '',
-                  // a pull request opened with GITHUB_TOKEN starts no workflow run
-                  'Its checks only run once the branch gets a push from someone else, or the pull request is closed and reopened.',
+                  // a pull request opened with GITHUB_TOKEN starts no workflow run; one an app opens runs its checks
+                  ...(process.env.APP === 'true' ? [] : [
+                    '',
+                    'Its checks only run once the branch gets a push from someone else, or the pull request is closed and reopened.'
+                      + ' Set the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret so the next one runs them.',
+                  ]),
                 ].join('\n'),
               });
               core.info(`Opened #${pr.number}`);

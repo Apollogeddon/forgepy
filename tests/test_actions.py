@@ -1088,11 +1088,46 @@ def test_patch_only_refreshes_forgepys_files_and_leaves_vulnerable_packages_to_d
     assert "grant this job pull-requests: write" in propose
 
 
-def test_patch_gives_its_token_only_to_the_push():
+def test_patch_gives_its_token_only_to_the_push_and_the_pull_request():
     assert _step("patch.yml", "update", "Check out")["with"]["persist-credentials"] is False
     for step in _steps("patch.yml", "update"):
-        if "secrets.GITHUB_TOKEN" in yaml.safe_dump(step):
-            assert step["name"] == "Push the refresh"
+        if "secrets.GITHUB_TOKEN" in yaml.safe_dump(step) or "steps.app.outputs.token" in yaml.safe_dump(step):
+            assert step["name"] in ("Push the refresh", "Propose the refresh")
+
+
+# a push or pull request made with GITHUB_TOKEN starts no workflow run; with the release app's token, when one is
+# set, the refresh's pull request runs the checks
+def test_patch_proposes_with_an_optional_app_token():
+    call = _workflow_call("patch.yml")
+    assert call["inputs"]["app_client_id"]["default"] == ""
+    assert call["inputs"]["app_client_id"]["required"] is False
+    assert call["secrets"]["APP_PRIVATE_KEY"]["required"] is False
+    app = _step("patch.yml", "update", "Create the app's token")
+    assert app["id"] == "app"
+    assert app["if"].startswith("inputs.app_client_id != ''")
+    assert app["uses"] == _step("version.yml", "release", "Create the app's token")["uses"]
+    assert app["with"] == {
+        "client-id": "${{ inputs.app_client_id }}",
+        "private-key": "${{ secrets.APP_PRIVATE_KEY }}",
+        "permission-contents": "write",
+        "permission-pull-requests": "write",
+    }
+    token = "${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}"  # noqa: S105
+    assert _step("patch.yml", "update", "Push the refresh")["env"]["GH_TOKEN"] == token
+    propose = _step("patch.yml", "update", "Propose the refresh")
+    assert propose["with"]["github-token"] == token
+    # the close-and-reopen note only when the pull request was opened with GITHUB_TOKEN
+    assert propose["env"]["APP"] == "${{ steps.app.outputs.token != '' }}"
+    assert "process.env.APP === 'true' ? []" in propose["with"]["script"]
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "job"), [(".index.yml", None, "patch-docs"), (*GENERATED[0], "patch")], ids=["own", "generated"]
+)
+def test_patch_jobs_pass_the_release_app_when_one_is_set(name: str, text: str | None, job: str):
+    patch = (_load(name) if text is None else _load_text(text))["jobs"][job]
+    assert _APP_INPUTS.items() <= patch["with"].items()
+    assert patch["secrets"] == _APP_SECRETS
 
 
 def _git(cwd: Path, *args: str) -> str:
