@@ -58,7 +58,7 @@ STAGES: dict[str, list[str]] = {
     "version": ["release"],
     "publish": ["package", "assets", "attest"],
     # check: a check of the deployed site, which forgepy doesn't run yet
-    "pages": ["deploy", "check"],
+    "pages": ["package", "deploy", "check"],
     "patch": ["update"],
     "merge": ["review", "squash"],
 }
@@ -1048,7 +1048,17 @@ def test_pages_deploys_one_at_a_time_in_a_group_a_callers_concurrency_cant_share
     deploy = _jobs("pages.yml")["deploy"]
     assert deploy["concurrency"] == {"group": "pages-deploy", "cancel-in-progress": False}
     assert deploy["permissions"] == {"pages": "write", "id-token": "write"}
-    assert _step("pages.yml", "deploy", "Download the build")["with"]["name"] == "${{ inputs.artifact_name }}"
+
+
+# deploy-pages finds the artifact through the artifacts API, which can lag an upload in the same job by
+# a few seconds, so the upload is a job of its own and deploy waits for it
+def test_pages_uploads_the_artifact_a_job_before_deploy():
+    jobs = _jobs("pages.yml")
+    assert jobs["package"]["permissions"] == {}
+    assert _step("pages.yml", "package", "Download the build")["with"]["name"] == "${{ inputs.artifact_name }}"
+    assert _step("pages.yml", "package", "Upload the Pages artifact")
+    assert jobs["deploy"]["needs"] == "package"
+    assert [step["name"] for step in _steps("pages.yml", "deploy")] == ["Deploy to Pages"]
 
 
 def test_publish_caps_the_package_stage():
