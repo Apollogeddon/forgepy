@@ -238,7 +238,8 @@ Outputs `published` (`'true'` when this run published the package).
 
 *GitHub Pages.*
 
-1. **`deploy`**: Downloads the `artifact_name` build artifact, which `website.yml` uploaded earlier in the run, and deploys it to GitHub Pages. Deploys run one at a time, in the `pages-deploy` concurrency group: a newer deploy waits for a running one, and replaces one still waiting. The group isn't `pages`, the one GitHub's starter Pages workflow uses at workflow level, as a job sharing its caller's group deadlocks.
+1. **`package`**: Downloads the `artifact_name` build artifact, which `website.yml` uploaded earlier in the run, and uploads it as the Pages artifact.
+2. **`deploy`**: Deploys the Pages artifact to GitHub Pages. It's a job of its own because `deploy-pages` finds the artifact through the artifacts API, which can take a few seconds to list one uploaded in the same job. Deploys run one at a time, in the `pages-deploy` concurrency group: a newer deploy waits for a running one, and replaces one still waiting. The group isn't `pages`, the one GitHub's starter Pages workflow uses at workflow level, as a job sharing its caller's group deadlocks. *(Needs: package)*
 
 `forgepy init --website` calls it on a release, or on every push to `main` without versioning, and only from a public repository, as GitHub Free serves Pages only from those. On a paid plan, remove `github.event.repository.private == false` from the `pages` job's condition.
 
