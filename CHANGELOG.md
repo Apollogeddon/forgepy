@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.3](https://github.com/Apollogeddon/forgepy/compare/v1.1.2...v1.1.3) (2026-11-28)
+
+
+### Bug Fixes
+
+* **ci:** upload the pages artifact a job before deploy, so deploy-pages finds it listed ([0dfa3ba](https://github.com/Apollogeddon/forgepy/commit/0dfa3bacb56d9c2e4d7e6a92400ff59aa88b8dd6))
+* **ci:** upload the pages artifact a job before deploy, so deploy-pages finds it listed ([3519350](https://github.com/Apollogeddon/forgepy/commit/35193503b5e4ca26b0aed338c01ef1c1b98d371a))
+* **deps:** bump the dependencies group with 5 updates ([#101](https://github.com/Apollogeddon/forgepy/issues/101)) ([83064cb](https://github.com/Apollogeddon/forgepy/commit/83064cb297e64c51d43938131f691a674106c231))
+
 ## [1.1.2](https://github.com/Apollogeddon/forgepy/compare/v1.1.1...v1.1.2) (2026-11-26)
 
 
